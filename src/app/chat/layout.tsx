@@ -1,5 +1,6 @@
 "use client";
 import type { ReactNode } from 'react';
+import { useEffect } from 'react'; // Added useEffect import
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { AppLogo } from '@/components/app-logo';
