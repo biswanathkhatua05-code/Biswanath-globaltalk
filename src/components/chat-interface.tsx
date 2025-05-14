@@ -11,6 +11,7 @@ import { useChatModeration } from '@/hooks/use-chat-moderation';
 import { useToast } from '@/hooks/use-toast';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { Separator } from './ui/separator';
+import { UserAvatar } from '@/components/user-avatar'; // Added import
 
 interface ChatInterfaceProps {
   chatId: string; // Unique ID for this chat session/room
