@@ -13,7 +13,7 @@ export function AppLogo(props: SVGProps<SVGSVGElement> & { showText?: boolean })
         strokeWidth="2"
         strokeLinecap="round"
         strokeLinejoin="round"
-        className="h-8 w-8 text-primary"
+        className="h-7 w-8 text-primary"
         aria-label="GlobaTalk Lite Logo Icon"
         {...rest}
       >

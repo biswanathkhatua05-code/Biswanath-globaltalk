@@ -1,3 +1,4 @@
+
 // src/components/ui/sidebar.tsx
 "use client"
 
@@ -11,7 +12,7 @@ import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Separator } from "@/components/ui/separator"
-import { Sheet, SheetContent } from "@/components/ui/sheet"
+import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from "@/components/ui/sheet" // Added SheetHeader, SheetTitle, SheetDescription
 import { Skeleton } from "@/components/ui/skeleton"
 import {
   Tooltip,
@@ -19,6 +20,7 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@/components/ui/tooltip"
+import { APP_NAME } from '@/lib/constants'; // Added APP_NAME import
 
 const SIDEBAR_COOKIE_NAME = "sidebar_state"
 const SIDEBAR_COOKIE_MAX_AGE = 60 * 60 * 24 * 7
@@ -172,7 +174,7 @@ const Sidebar = React.forwardRef<
       collapsible = "offcanvas",
       className,
       children,
-      ...props
+      ...props // These props are for the desktop div wrapper
     },
     ref
   ) => {
@@ -195,11 +197,13 @@ const Sidebar = React.forwardRef<
 
     if (isMobile) {
       return (
-        <Sheet open={openMobile} onOpenChange={setOpenMobile} {...props}>
+        // Props for Sheet component itself (like defaultOpen, modal etc.) are handled by its own definition.
+        // We don't spread general div props onto Sheet.
+        <Sheet open={openMobile} onOpenChange={setOpenMobile}>
           <SheetContent
             data-sidebar="sidebar"
             data-mobile="true"
-            className="w-[--sidebar-width] bg-sidebar p-0 text-sidebar-foreground [&>button]:hidden"
+            className="w-[--sidebar-width] bg-sidebar text-sidebar-foreground flex flex-col p-0 [&>button]:hidden" // Added flex flex-col and p-0
             style={
               {
                 "--sidebar-width": SIDEBAR_WIDTH_MOBILE,
@@ -207,7 +211,17 @@ const Sidebar = React.forwardRef<
             }
             side={side}
           >
-            <div className="flex h-full w-full flex-col">{children}</div>
+            {/* Accessibility: Add a visually hidden title and description for the sheet */}
+            <SheetHeader className="sr-only">
+              <SheetTitle>{APP_NAME} Menu</SheetTitle>
+              <SheetDescription>
+                Main navigation menu for {APP_NAME}. Use the links below to navigate the application.
+              </SheetDescription>
+            </SheetHeader>
+            {/* Original children are rendered here, they will provide the visible content */}
+            <div className="flex-grow flex flex-col overflow-auto">
+              {children}
+            </div>
           </SheetContent>
         </Sheet>
       )
@@ -215,12 +229,14 @@ const Sidebar = React.forwardRef<
 
     return (
       <div
-        ref={ref}
-        className="group peer hidden md:block text-sidebar-foreground"
+        ref={ref} // ref is applied here for desktop
+        className={cn("group peer hidden md:block text-sidebar-foreground", className)} // className from props is applied here for desktop
         data-state={state}
         data-collapsible={state === "collapsed" ? collapsible : ""}
         data-variant={variant}
         data-side={side}
+        // Other DOM props from ...props (like id, style etc.) also apply here for desktop
+        {...props} 
       >
         {/* This is what handles the sidebar gap on desktop */}
         <div
@@ -242,10 +258,10 @@ const Sidebar = React.forwardRef<
             // Adjust the padding for floating and inset variants.
             variant === "floating" || variant === "inset"
               ? "p-2 group-data-[collapsible=icon]:w-[calc(var(--sidebar-width-icon)_+_theme(spacing.4)_+2px)]"
-              : "group-data-[collapsible=icon]:w-[--sidebar-width-icon] group-data-[side=left]:border-r group-data-[side=right]:border-l",
-            className
+              : "group-data-[collapsible=icon]:w-[--sidebar-width-icon] group-data-[side=left]:border-r group-data-[side=right]:border-l"
+            // Removed className from here, as it's applied to the parent div
           )}
-          {...props}
+          // Removed {...props} from here
         >
           <div
             data-sidebar="sidebar"
