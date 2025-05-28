@@ -1,3 +1,4 @@
+
 "use client";
 import type { Message, User, ChatMode } from '@/lib/types';
 import React, { useState, useRef, useEffect, useCallback } from 'react';
@@ -10,8 +11,7 @@ import { useAuth } from '@/context/auth-context';
 import { useChatModeration } from '@/hooks/use-chat-moderation';
 import { useToast } from '@/hooks/use-toast';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
-import { Separator } from './ui/separator';
-import { UserAvatar } from '@/components/user-avatar'; // Added import
+import { UserAvatar } from '@/components/user-avatar';
 
 interface ChatInterfaceProps {
   chatId: string; // Unique ID for this chat session/room
@@ -23,6 +23,21 @@ interface ChatInterfaceProps {
   onDisconnect?: () => void;
   partner?: User; // For 1-on-1 chats
 }
+
+const PaidFeatureHeaderButton = ({ icon: Icon, label, price }: { icon: React.ElementType, label: string, price: string }) => (
+  <TooltipProvider>
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <Button variant="ghost" size="icon" className="text-muted-foreground" disabled>
+          <Icon className="h-5 w-5" />
+        </Button>
+      </TooltipTrigger>
+      <TooltipContent>
+        <p>{label} - {price}/month (Subscription Required)</p>
+      </TooltipContent>
+    </Tooltip>
+  </TooltipProvider>
+);
 
 export function ChatInterface({
   chatId,
@@ -111,30 +126,20 @@ export function ChatInterface({
     }
   }, [inputValue, currentUser, isLoggedIn, checkMessage, toast, onSendMessage]);
 
-
-  const PaidFeatureButton = ({ icon: Icon, label, price }: { icon: React.ElementType, label: string, price: string }) => (
-    <TooltipProvider>
-      <Tooltip>
-        <TooltipTrigger asChild>
-          <Button variant="outline" size="sm" className="text-muted-foreground" disabled>
-            <Icon className="mr-2 h-4 w-4" /> {label}
-          </Button>
-        </TooltipTrigger>
-        <TooltipContent>
-          <p>{label} - {price}/month (Subscription Required)</p>
-        </TooltipContent>
-      </Tooltip>
-    </TooltipProvider>
-  );
-
   return (
     <div className="flex h-full flex-col bg-card border rounded-lg shadow-xl overflow-hidden">
       <header className="flex items-center justify-between p-4 border-b">
         <div className="flex items-center gap-2">
           {partner && <UserAvatar user={partner} className="h-8 w-8"/>}
-          <h2 className="text-lg font-semibold text-foreground">{chatTitle}</h2>
+          <h2 className="text-lg font-semibold text-foreground truncate" title={chatTitle}>{chatTitle}</h2>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-1">
+          {chatMode !== 'global' && (
+            <>
+              <PaidFeatureHeaderButton icon={Video} label="Video Call" price="Rs. 49" />
+              <PaidFeatureHeaderButton icon={Phone} label="Voice Call" price="Rs. 20" />
+            </>
+          )}
           {chatMode !== 'global' && showDisconnectButton && (
             <TooltipProvider>
               <Tooltip>
@@ -164,12 +169,6 @@ export function ChatInterface({
       </ScrollArea>
 
       <footer className="p-4 border-t bg-background/80 backdrop-blur-sm">
-        {chatMode !== 'global' && (
-          <div className="flex gap-2 mb-3 pb-3 border-b border-dashed">
-            <PaidFeatureButton icon={Video} label="Video Call" price="Rs. 49" />
-            <PaidFeatureButton icon={Phone} label="Voice Call" price="Rs. 20" />
-          </div>
-        )}
         <form
           onSubmit={(e) => {
             e.preventDefault();
