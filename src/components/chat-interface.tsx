@@ -6,7 +6,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { MessageBubble } from './message-bubble';
-import { Send, Paperclip, Mic, Video, Phone, AlertCircle, LogOut, Bot, VideoOff, XCircle, Loader2, StopCircle, MicOff } from 'lucide-react';
+import { Send, Paperclip, Mic, Video, Phone, AlertCircle, LogOut, Bot, VideoOff, XCircle, Loader2, StopCircle, MicOff, CameraReverse } from 'lucide-react';
 import { useAuth } from '@/context/auth-context';
 import { useChatModeration } from '@/hooks/use-chat-moderation';
 import { useToast } from '@/hooks/use-toast';
@@ -50,6 +50,7 @@ export function ChatInterface({
 
   const [isMicMuted, setIsMicMuted] = useState(false);
   const [isCameraOff, setIsCameraOff] = useState(false);
+  const [currentFacingMode, setCurrentFacingMode] = useState<'user' | 'environment'>('user');
 
 
   const [isRecording, setIsRecording] = useState(false);
@@ -145,23 +146,24 @@ export function ChatInterface({
         setHasCameraPermission(null);
         setIsMicMuted(false);
         setIsCameraOff(false);
+        setCurrentFacingMode('user'); // Reset to default facing mode
       }
       return newShowVideoCallState;
     });
   }, [stopMediaStream]);
 
   useEffect(() => {
-    const getMediaStream = async () => {
+    const getMediaStream = async (facingMode: 'user' | 'environment') => {
       if (typeof window !== 'undefined' && navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
-        setHasCameraPermission(null); // Reset while requesting
+        setHasCameraPermission(null); 
         try {
-          const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+          const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode }, audio: true });
           streamRef.current = stream;
           setHasCameraPermission(true);
           if (videoRef.current) {
             videoRef.current.srcObject = stream;
           }
-          // Set initial mute and camera off states based on stream tracks
+          
           stream.getAudioTracks().forEach(track => track.enabled = !isMicMuted);
           stream.getVideoTracks().forEach(track => track.enabled = !isCameraOff);
 
@@ -171,10 +173,10 @@ export function ChatInterface({
           toast({
             variant: 'destructive',
             title: 'Media Access Denied',
-            description: 'Please enable camera and microphone permissions in your browser settings.',
+            description: 'Could not access the requested camera/microphone. Please check permissions or try a different camera.',
           });
-          stopMediaStream(); // Ensure stream is stopped if permission fails
-          setShowVideoCall(false); // Close video panel if permissions fail
+          stopMediaStream(); 
+          // setShowVideoCall(false); // Keep panel open to show error, or close:
         }
       } else {
         setHasCameraPermission(false);
@@ -188,7 +190,7 @@ export function ChatInterface({
     };
 
     if (showVideoCall) {
-      getMediaStream();
+      getMediaStream(currentFacingMode);
     } else {
       stopMediaStream();
     }
@@ -196,7 +198,7 @@ export function ChatInterface({
     return () => {
       stopMediaStream();
     };
-  }, [showVideoCall, toast, stopMediaStream, isMicMuted, isCameraOff]);
+  }, [showVideoCall, currentFacingMode, toast, stopMediaStream, isMicMuted, isCameraOff]);
 
 
   const toggleMic = () => {
@@ -217,6 +219,10 @@ export function ChatInterface({
         setIsCameraOff(!videoTracks[0].enabled);
       }
     }
+  };
+
+  const handleSwitchCamera = () => {
+    setCurrentFacingMode(prevMode => prevMode === 'user' ? 'environment' : 'user');
   };
 
 
@@ -375,7 +381,16 @@ export function ChatInterface({
 
       {showVideoCall ? (
         <div className="flex-1 p-4 flex flex-col items-center justify-center bg-black relative overflow-hidden">
-          <video ref={videoRef} className="w-full h-full object-contain scale-x-[-1]" autoPlay muted playsInline />
+          <video 
+            ref={videoRef} 
+            className={cn(
+              "w-full h-full object-contain",
+              currentFacingMode === 'user' && "scale-x-[-1]" 
+            )} 
+            autoPlay 
+            muted 
+            playsInline 
+          />
           
           {hasCameraPermission === false && (
             <Alert variant="destructive" className="absolute top-4 left-1/2 -translate-x-1/2 w-auto max-w-md z-20">
@@ -394,7 +409,7 @@ export function ChatInterface({
           )}
 
           {hasCameraPermission === true && (
-            <div className="absolute bottom-4 left-1/2 -translate-x-1/2 z-20 flex items-center gap-3 p-3 bg-black/50 rounded-full">
+            <div className="absolute bottom-4 left-1/2 -translate-x-1/2 z-20 flex items-center gap-2 p-2 bg-black/60 rounded-full">
               <TooltipProvider>
                 <Tooltip>
                   <TooltipTrigger asChild>
@@ -412,6 +427,15 @@ export function ChatInterface({
                     </Button>
                   </TooltipTrigger>
                   <TooltipContent><p>{isCameraOff ? "Turn Camera On" : "Turn Camera Off"}</p></TooltipContent>
+                </Tooltip>
+                
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button onClick={handleSwitchCamera} variant="ghost" size="icon" className="text-white hover:bg-white/20 rounded-full p-3">
+                      <CameraReverse className="h-6 w-6" />
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent><p>Switch Camera</p></TooltipContent>
                 </Tooltip>
 
                 <Tooltip>
