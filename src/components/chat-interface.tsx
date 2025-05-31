@@ -204,7 +204,7 @@ export function ChatInterface({
     return () => {
       stopMediaStream();
     };
-  }, [showVideoCall, currentFacingMode, toast, stopMediaStream, isMicMuted, isCameraOff]); // Added isMicMuted, isCameraOff to dependencies
+  }, [showVideoCall, currentFacingMode, toast, stopMediaStream, isMicMuted, isCameraOff]); 
 
 
   const toggleMic = () => {
@@ -415,12 +415,12 @@ export function ChatInterface({
           )}
 
           {hasCameraPermission === true && (
-            <div className="absolute bottom-4 left-1/2 -translate-x-1/2 z-20 flex items-center gap-2 p-2 bg-black/60 rounded-full">
+            <div className="absolute bottom-6 left-1/2 -translate-x-1/2 z-20 flex items-center gap-3 p-2 bg-black/75 rounded-full shadow-lg">
               <TooltipProvider>
                 <Tooltip>
                   <TooltipTrigger asChild>
-                    <Button onClick={toggleMic} variant="ghost" size="icon" className="text-white hover:bg-white/20 rounded-full p-3">
-                      {isMicMuted ? <MicOff className="h-6 w-6" /> : <Mic className="h-6 w-6" />}
+                    <Button onClick={toggleMic} size="icon" className="bg-neutral-700/50 hover:bg-neutral-600/70 text-white rounded-full p-2">
+                      {isMicMuted ? <MicOff className="h-5 w-5" /> : <Mic className="h-5 w-5" />}
                     </Button>
                   </TooltipTrigger>
                   <TooltipContent><p>{isMicMuted ? "Unmute Microphone" : "Mute Microphone"}</p></TooltipContent>
@@ -428,8 +428,8 @@ export function ChatInterface({
 
                 <Tooltip>
                   <TooltipTrigger asChild>
-                    <Button onClick={toggleCamera} variant="ghost" size="icon" className="text-white hover:bg-white/20 rounded-full p-3">
-                      {isCameraOff ? <VideoOff className="h-6 w-6" /> : <Video className="h-6 w-6" />}
+                    <Button onClick={toggleCamera} size="icon" className="bg-neutral-700/50 hover:bg-neutral-600/70 text-white rounded-full p-2">
+                      {isCameraOff ? <VideoOff className="h-5 w-5" /> : <Video className="h-5 w-5" />}
                     </Button>
                   </TooltipTrigger>
                   <TooltipContent><p>{isCameraOff ? "Turn Camera On" : "Turn Camera Off"}</p></TooltipContent>
@@ -437,8 +437,8 @@ export function ChatInterface({
                 
                 <Tooltip>
                   <TooltipTrigger asChild>
-                    <Button onClick={handleSwitchCamera} variant="ghost" size="icon" className="text-white hover:bg-white/20 rounded-full p-3">
-                      <SwitchCamera className="h-6 w-6" />
+                    <Button onClick={handleSwitchCamera} size="icon" className="bg-neutral-700/50 hover:bg-neutral-600/70 text-white rounded-full p-2">
+                      <SwitchCamera className="h-5 w-5" />
                     </Button>
                   </TooltipTrigger>
                   <TooltipContent><p>Switch Camera</p></TooltipContent>
@@ -446,8 +446,8 @@ export function ChatInterface({
 
                 <Tooltip>
                   <TooltipTrigger asChild>
-                    <Button onClick={handleVideoCallClick} variant="destructive" size="icon" className="bg-red-600 hover:bg-red-700 rounded-full p-3">
-                      <XCircle className="h-6 w-6" />
+                    <Button onClick={handleVideoCallClick} size="icon" className="bg-red-500 hover:bg-red-600 text-white rounded-full p-2">
+                      <XCircle className="h-5 w-5" />
                     </Button>
                   </TooltipTrigger>
                   <TooltipContent><p>End Call</p></TooltipContent>
@@ -537,3 +537,4 @@ export function ChatInterface({
     </div>
   );
 }
+
