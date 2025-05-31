@@ -6,7 +6,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { MessageBubble } from './message-bubble';
-import { Send, Paperclip, Mic, Video, Phone, AlertCircle, LogOut, Bot, VideoOff, XCircle, Loader2, StopCircle } from 'lucide-react';
+import { Send, Paperclip, Mic, Video, Phone, AlertCircle, LogOut, Bot, VideoOff, XCircle, Loader2, StopCircle, MicOff } from 'lucide-react';
 import { useAuth } from '@/context/auth-context';
 import { useChatModeration } from '@/hooks/use-chat-moderation';
 import { useToast } from '@/hooks/use-toast';
@@ -46,6 +46,11 @@ export function ChatInterface({
   const [showVideoCall, setShowVideoCall] = useState(false);
   const [hasCameraPermission, setHasCameraPermission] = useState<boolean | null>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
+  const streamRef = useRef<MediaStream | null>(null);
+
+  const [isMicMuted, setIsMicMuted] = useState(false);
+  const [isCameraOff, setIsCameraOff] = useState(false);
+
 
   const [isRecording, setIsRecording] = useState(false);
   const [micPermissionStatus, setMicPermissionStatus] = useState<'idle' | 'pending' | 'granted' | 'denied'>('idle');
@@ -122,72 +127,104 @@ export function ChatInterface({
     }
   }, [inputValue, currentUser, isLoggedIn, checkMessage, toast, onSendMessage]);
 
+  const stopMediaStream = useCallback(() => {
+    if (streamRef.current) {
+      streamRef.current.getTracks().forEach(track => track.stop());
+      streamRef.current = null;
+    }
+    if (videoRef.current) {
+      videoRef.current.srcObject = null;
+    }
+  }, []);
+
   const handleVideoCallClick = useCallback(() => {
     setShowVideoCall(prev => {
       const newShowVideoCallState = !prev;
       if (!newShowVideoCallState) { // Turning off video call
-        if (videoRef.current && videoRef.current.srcObject) {
-          const stream = videoRef.current.srcObject as MediaStream;
-          stream.getTracks().forEach(track => track.stop());
-          videoRef.current.srcObject = null;
-        }
+        stopMediaStream();
         setHasCameraPermission(null);
+        setIsMicMuted(false);
+        setIsCameraOff(false);
       }
       return newShowVideoCallState;
     });
-  }, []);
+  }, [stopMediaStream]);
 
   useEffect(() => {
-    const getCameraStream = async () => {
+    const getMediaStream = async () => {
       if (typeof window !== 'undefined' && navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
+        setHasCameraPermission(null); // Reset while requesting
         try {
-          const stream = await navigator.mediaDevices.getUserMedia({ video: true });
+          const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+          streamRef.current = stream;
           setHasCameraPermission(true);
           if (videoRef.current) {
             videoRef.current.srcObject = stream;
           }
+          // Set initial mute and camera off states based on stream tracks
+          stream.getAudioTracks().forEach(track => track.enabled = !isMicMuted);
+          stream.getVideoTracks().forEach(track => track.enabled = !isCameraOff);
+
         } catch (error) {
-          console.error('Error accessing camera:', error);
+          console.error('Error accessing media devices:', error);
           setHasCameraPermission(false);
           toast({
             variant: 'destructive',
-            title: 'Camera Access Denied',
-            description: 'Please enable camera permissions in your browser settings to use this feature.',
+            title: 'Media Access Denied',
+            description: 'Please enable camera and microphone permissions in your browser settings.',
           });
+          stopMediaStream(); // Ensure stream is stopped if permission fails
+          setShowVideoCall(false); // Close video panel if permissions fail
         }
       } else {
         setHasCameraPermission(false);
         toast({
           variant: 'destructive',
-          title: 'Camera Not Supported',
-          description: 'Your browser does not support camera access or you are in an insecure context.',
+          title: 'Media Not Supported',
+          description: 'Your browser does not support camera/microphone access or you are in an insecure context.',
         });
+        setShowVideoCall(false);
       }
     };
 
     if (showVideoCall) {
-      getCameraStream();
+      getMediaStream();
     } else {
-      if (videoRef.current && videoRef.current.srcObject) {
-        const stream = videoRef.current.srcObject as MediaStream;
-        stream.getTracks().forEach(track => track.stop());
-        videoRef.current.srcObject = null;
-      }
+      stopMediaStream();
     }
 
     return () => {
-      if (videoRef.current && videoRef.current.srcObject) {
-        const stream = videoRef.current.srcObject as MediaStream;
-        stream.getTracks().forEach(track => track.stop());
-      }
+      stopMediaStream();
     };
-  }, [showVideoCall, toast]);
+  }, [showVideoCall, toast, stopMediaStream, isMicMuted, isCameraOff]);
+
+
+  const toggleMic = () => {
+    if (streamRef.current) {
+      const audioTracks = streamRef.current.getAudioTracks();
+      if (audioTracks.length > 0) {
+        audioTracks[0].enabled = !audioTracks[0].enabled;
+        setIsMicMuted(!audioTracks[0].enabled);
+      }
+    }
+  };
+
+  const toggleCamera = () => {
+    if (streamRef.current) {
+      const videoTracks = streamRef.current.getVideoTracks();
+      if (videoTracks.length > 0) {
+        videoTracks[0].enabled = !videoTracks[0].enabled;
+        setIsCameraOff(!videoTracks[0].enabled);
+      }
+    }
+  };
+
 
   const startRecording = async () => {
     if (!currentUser || !isLoggedIn) return;
     if (typeof navigator.mediaDevices?.getUserMedia !== 'function') {
       toast({ title: 'Audio Recording Not Supported', description: 'Your browser does not support audio recording.', variant: 'destructive' });
-      setMicPermissionStatus('denied'); // Consider it denied if not supported
+      setMicPermissionStatus('denied'); 
       return;
     }
   
@@ -212,7 +249,7 @@ export function ChatInterface({
         const tempMessageId = `msg_vn_${Date.now()}`;
         const optimisticMessage: Message = {
           id: tempMessageId,
-          text: '', // Voice notes don't have text
+          text: '', 
           timestamp: Date.now(),
           user: currentUser,
           isSender: true,
@@ -234,7 +271,6 @@ export function ChatInterface({
         } else {
           setMessages(prev => prev.map(m => m.id === tempMessageId ? { ...m, status: 'sent' } : m));
         }
-        // Clean up the audio stream tracks
         stream.getTracks().forEach(track => track.stop());
       };
   
@@ -258,7 +294,6 @@ export function ChatInterface({
     if (mediaRecorderRef.current && isRecording) {
       mediaRecorderRef.current.stop();
       setIsRecording(false);
-      // onstop will handle message creation and sending
       toast({ title: 'Recording Stopped', description: 'Processing voice note...', variant: 'default' });
     }
   };
@@ -273,8 +308,6 @@ export function ChatInterface({
           description: 'Please enable microphone permissions in your browser settings and try again.',
           variant: 'destructive',
         });
-        // Optionally, try to re-request or guide user
-        // For now, just informs.
         return;
       }
       startRecording();
@@ -341,26 +374,57 @@ export function ChatInterface({
       </header>
 
       {showVideoCall ? (
-        <div className="flex-1 p-4 flex flex-col items-center justify-start bg-background overflow-auto">
-          <p className="text-sm text-muted-foreground mb-2">Your Video Feed</p>
-          <video ref={videoRef} className="w-full max-w-xl aspect-video rounded-md bg-black scale-x-[-1]" autoPlay muted playsInline />
+        <div className="flex-1 p-4 flex flex-col items-center justify-center bg-black relative overflow-hidden">
+          <video ref={videoRef} className="w-full h-full object-contain scale-x-[-1]" autoPlay muted playsInline />
+          
           {hasCameraPermission === false && (
-            <Alert variant="destructive" className="mt-4 w-full max-w-xl">
+            <Alert variant="destructive" className="absolute top-4 left-1/2 -translate-x-1/2 w-auto max-w-md z-20">
               <AlertCircle className="h-4 w-4" />
-              <AlertTitle>Camera Access Denied</AlertTitle>
+              <AlertTitle>Media Access Denied</AlertTitle>
               <AlertDescription>
-                Could not access camera. Please enable camera permissions in your browser settings and refresh.
+                Could not access camera/microphone. Please enable permissions and refresh.
               </AlertDescription>
             </Alert>
           )}
-          {hasCameraPermission === null && !videoRef.current?.srcObject && (
-             <div className="mt-4 text-muted-foreground p-4 border rounded-md w-full max-w-xl flex items-center justify-center">
-                <Loader2 className="h-5 w-5 animate-spin mr-2" /> Requesting camera access...
+          {hasCameraPermission === null && (
+             <div className="absolute inset-0 flex items-center justify-center bg-black bg-opacity-50 z-10">
+                <Loader2 className="h-8 w-8 animate-spin text-white" />
+                <p className="ml-2 text-white">Requesting media access...</p>
              </div>
           )}
-          <Button onClick={handleVideoCallClick} variant="outline" className="mt-4">
-            <XCircle className="mr-2 h-4 w-4" /> Close Video Feed
-          </Button>
+
+          {hasCameraPermission === true && (
+            <div className="absolute bottom-4 left-1/2 -translate-x-1/2 z-20 flex items-center gap-3 p-3 bg-black/50 rounded-full">
+              <TooltipProvider>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button onClick={toggleMic} variant="ghost" size="icon" className="text-white hover:bg-white/20 rounded-full p-3">
+                      {isMicMuted ? <MicOff className="h-6 w-6" /> : <Mic className="h-6 w-6" />}
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent><p>{isMicMuted ? "Unmute Microphone" : "Mute Microphone"}</p></TooltipContent>
+                </Tooltip>
+
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button onClick={toggleCamera} variant="ghost" size="icon" className="text-white hover:bg-white/20 rounded-full p-3">
+                      {isCameraOff ? <VideoOff className="h-6 w-6" /> : <Video className="h-6 w-6" />}
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent><p>{isCameraOff ? "Turn Camera On" : "Turn Camera Off"}</p></TooltipContent>
+                </Tooltip>
+
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button onClick={handleVideoCallClick} variant="destructive" size="icon" className="bg-red-600 hover:bg-red-700 rounded-full p-3">
+                      <XCircle className="h-6 w-6" />
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent><p>End Call</p></TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
+            </div>
+          )}
         </div>
       ) : (
         <ScrollArea className="flex-1 p-4" ref={scrollAreaRef}>
