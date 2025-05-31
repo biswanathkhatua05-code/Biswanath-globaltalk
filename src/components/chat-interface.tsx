@@ -6,7 +6,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { MessageBubble } from './message-bubble';
-import { Send, Paperclip, Mic, Video, Phone, AlertCircle, LogOut, Bot, VideoOff, XCircle, Loader2, StopCircle, MicOff, CameraReverse } from 'lucide-react';
+import { Send, Paperclip, Mic, Video, Phone, AlertCircle, LogOut, Bot, VideoOff, XCircle, Loader2, StopCircle, MicOff, SwitchCamera } from 'lucide-react';
 import { useAuth } from '@/context/auth-context';
 import { useChatModeration } from '@/hooks/use-chat-moderation';
 import { useToast } from '@/hooks/use-toast';
@@ -157,6 +157,11 @@ export function ChatInterface({
       if (typeof window !== 'undefined' && navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
         setHasCameraPermission(null); 
         try {
+          // Stop any existing stream before requesting a new one, especially for camera switch
+          if (streamRef.current) {
+            streamRef.current.getTracks().forEach(track => track.stop());
+          }
+
           const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode }, audio: true });
           streamRef.current = stream;
           setHasCameraPermission(true);
@@ -195,10 +200,11 @@ export function ChatInterface({
       stopMediaStream();
     }
 
+    // Cleanup function to stop media stream when component unmounts or dependencies change before re-running effect
     return () => {
       stopMediaStream();
     };
-  }, [showVideoCall, currentFacingMode, toast, stopMediaStream, isMicMuted, isCameraOff]);
+  }, [showVideoCall, currentFacingMode, toast, stopMediaStream, isMicMuted, isCameraOff]); // Added isMicMuted, isCameraOff to dependencies
 
 
   const toggleMic = () => {
@@ -432,7 +438,7 @@ export function ChatInterface({
                 <Tooltip>
                   <TooltipTrigger asChild>
                     <Button onClick={handleSwitchCamera} variant="ghost" size="icon" className="text-white hover:bg-white/20 rounded-full p-3">
-                      <CameraReverse className="h-6 w-6" />
+                      <SwitchCamera className="h-6 w-6" />
                     </Button>
                   </TooltipTrigger>
                   <TooltipContent><p>Switch Camera</p></TooltipContent>
@@ -531,4 +537,3 @@ export function ChatInterface({
     </div>
   );
 }
-
