@@ -1,3 +1,4 @@
+
 "use client";
 import type { Message, User, ChatMode } from '@/lib/types';
 import React, { useState, useRef, useEffect, useCallback } from 'react';
@@ -299,6 +300,7 @@ export function ChatInterface({
                       size="icon"
                       onClick={handleVideoCallClick}
                       className={cn("text-muted-foreground hover:text-primary", showVideoCall && "text-primary bg-accent")}
+                      disabled={isRecording || micPermissionStatus === 'pending'}
                     >
                       {showVideoCall ? <VideoOff className="h-5 w-5" /> : <Video className="h-5 w-5" />}
                     </Button>
@@ -341,7 +343,7 @@ export function ChatInterface({
       {showVideoCall ? (
         <div className="flex-1 p-4 flex flex-col items-center justify-start bg-background overflow-auto">
           <p className="text-sm text-muted-foreground mb-2">Your Video Feed</p>
-          <video ref={videoRef} className="w-full max-w-xl aspect-video rounded-md bg-black" autoPlay muted playsInline />
+          <video ref={videoRef} className="w-full max-w-xl aspect-video rounded-md bg-black scale-x-[-1]" autoPlay muted playsInline />
           {hasCameraPermission === false && (
             <Alert variant="destructive" className="mt-4 w-full max-w-xl">
               <AlertCircle className="h-4 w-4" />
@@ -441,3 +443,4 @@ export function ChatInterface({
     </div>
   );
 }
+
