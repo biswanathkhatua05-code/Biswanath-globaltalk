@@ -1,3 +1,4 @@
+
 // src/lib/firebase.ts
 import { initializeApp, getApps, getApp, type FirebaseApp } from 'firebase/app';
 import { getAuth, type Auth } from 'firebase/auth';
@@ -18,7 +19,7 @@ const firebaseConfig = {
 
 let app: FirebaseApp;
 let auth: Auth;
-let appCheck: AppCheck | undefined;
+let appCheckInstance: AppCheck | undefined; // Renamed to avoid conflict if exported directly
 // let firestore: Firestore;
 // let storage: FirebaseStorage;
 
@@ -30,19 +31,25 @@ if (!getApps().length) {
 
 auth = getAuth(app);
 
-// Initialize App Check
+// Initialize App Check - THIS IS CRUCIAL
 if (typeof window !== 'undefined') { // Ensure App Check is initialized only on the client
-  if (process.env.NEXT_PUBLIC_FIREBASE_RECAPTCHA_SITE_KEY) {
-    appCheck = initializeAppCheck(app, {
-      provider: new ReCaptchaV3Provider(process.env.NEXT_PUBLIC_FIREBASE_RECAPTCHA_SITE_KEY),
-      // Optional: set to true if you want to refresh tokens automatically
-      isTokenAutoRefreshEnabled: true,
-    });
+  const recaptchaSiteKey = process.env.NEXT_PUBLIC_FIREBASE_RECAPTCHA_SITE_KEY;
+  if (recaptchaSiteKey && recaptchaSiteKey !== 'YOUR_RECAPTCHA_V3_SITE_KEY_HERE' && recaptchaSiteKey.trim() !== '') {
+    console.log("Firebase App Check: Initializing with reCAPTCHA v3 site key.");
+    try {
+      appCheckInstance = initializeAppCheck(app, {
+        provider: new ReCaptchaV3Provider(recaptchaSiteKey),
+        isTokenAutoRefreshEnabled: true,
+      });
+      console.log("Firebase App Check: Successfully initialized.");
+    } catch (error) {
+      console.error("Firebase App Check: Initialization failed.", error);
+    }
   } else {
     console.warn(
-      'Firebase App Check: NEXT_PUBLIC_FIREBASE_RECAPTCHA_SITE_KEY is not set. ' +
-      'App Check will not be initialized. If App Check is enforced in your Firebase project, ' +
-      'authentication and other Firebase services might fail.'
+      'Firebase App Check: NEXT_PUBLIC_FIREBASE_RECAPTCHA_SITE_KEY is not set or is still the placeholder. ' +
+      'App Check will NOT be initialized. If App Check is enforced in your Firebase project, ' +
+      'authentication and other Firebase services will likely fail.'
     );
   }
 }
@@ -50,4 +57,4 @@ if (typeof window !== 'undefined') { // Ensure App Check is initialized only on 
 // firestore = getFirestore(app); // Uncomment if you plan to use Firestore
 // storage = getStorage(app); // Uncomment if you plan to use Firebase Storage
 
-export { app, auth, appCheck /*, firestore, storage */ };
+export { app, auth, appCheckInstance as appCheck /*, firestore, storage */ };
