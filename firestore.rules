@@ -1,0 +1,60 @@
+
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Global messages: Allow read for all, write for authenticated users
+    match /global_messages/{messageId} {
+      allow read: if true;
+      allow create: if request.auth != null && request.resource.data.userId == request.auth.uid;
+      // No updates or deletes for simplicity, or add specific rules
+      allow update, delete: if false; 
+    }
+
+    // Chat sessions (for private and random chats)
+    // The chatSessionId would be like 'uid1_uid2' for private or a generated ID for random
+    match /chat_sessions/{chatSessionId} {
+      // Allow users involved in the chat to read/write session details (e.g., status, participants)
+      // This rule is broad; refine based on specific fields in chat_sessions documents
+      allow read, write: if request.auth != null && (
+                           (resource != null && resource.data.userId1 == request.auth.uid) || 
+                           (resource != null && resource.data.userId2 == request.auth.uid) ||
+                           (request.resource.data.userId1 == request.auth.uid) // For creating new sessions
+                         );
+      
+      // Messages within a chat session
+      match /messages/{messageId} {
+        // Allow users involved in the chatSessionId (derived from parent path) to read/write messages
+        // This assumes chatSessionId document contains userId1 and userId2 or similar participant info
+        allow read: if request.auth != null && get(/databases/$(database)/documents/chat_sessions/$(chatSessionId)).data.userId1 == request.auth.uid ||
+                       get(/databases/$(database)/documents/chat_sessions/$(chatSessionId)).data.userId2 == request.auth.uid;
+        allow create: if request.auth != null && request.resource.data.userId == request.auth.uid &&
+                         (get(/databases/$(database)/documents/chat_sessions/$(chatSessionId)).data.userId1 == request.auth.uid ||
+                          get(/databases/$(database)/documents/chat_sessions/$(chatSessionId)).data.userId2 == request.auth.uid);
+        // No updates or deletes for simplicity, or add specific rules
+        allow update, delete: if false;
+      }
+    }
+
+    // Random chat sessions pool (simplified for now)
+    match /random_chat_sessions_pool/{sessionId} {
+      allow read: if true; // Allow anyone to query for waiting sessions
+      allow create: if request.auth != null && request.resource.data.userId1 == request.auth.uid; // User creating a session
+      allow update: if request.auth != null && 
+                       ( (resource.data.userId1 == request.auth.uid && request.resource.data.status == 'disconnected') || // User1 disconnecting
+                         (resource.data.status == 'waiting' && request.resource.data.userId2 == request.auth.uid && request.resource.data.status == 'active') || // User2 joining
+                         (resource.data.userId2 == request.auth.uid && request.resource.data.status == 'disconnected') // User2 disconnecting
+                       ); 
+      allow delete: if false; // Or specific conditions if needed
+    }
+
+    // Basic user profile data (optional, if you store user info beyond auth)
+    // match /users/{userId} {
+    //   allow read: if true;
+    //   allow write: if request.auth != null && request.auth.uid == userId;
+    // }
+
+    // Add more specific rules for other collections as needed
+  }
+}

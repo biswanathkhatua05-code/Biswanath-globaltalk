@@ -2,9 +2,7 @@
 import { initializeApp, getApps, getApp, type FirebaseApp } from 'firebase/app';
 import { getAuth, type Auth } from 'firebase/auth';
 import { initializeAppCheck, ReCaptchaV3Provider, type AppCheck } from 'firebase/app-check';
-// Import other Firebase services as needed, e.g., Firestore, Storage
-// import { getFirestore, type Firestore } from 'firebase/firestore';
-// import { getStorage, type FirebaseStorage } from 'firebase/storage';
+import { getFirestore, type Firestore } from 'firebase/firestore'; // Import Firestore
 
 const firebaseConfig = {
   apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY,
@@ -18,9 +16,8 @@ const firebaseConfig = {
 
 let app: FirebaseApp;
 let auth: Auth;
+let firestore: Firestore; // Declare Firestore variable
 let appCheckInstance: AppCheck | undefined;
-// let firestore: Firestore;
-// let storage: FirebaseStorage;
 
 if (!getApps().length) {
   app = initializeApp(firebaseConfig);
@@ -33,21 +30,17 @@ if (!getApps().length) {
 auth = getAuth(app);
 console.log("Firebase Auth: Initialized.");
 
-// Initialize App Check - THIS IS CRUCIAL
-if (typeof window !== 'undefined') { // Ensure App Check is initialized only on the client
+firestore = getFirestore(app); // Initialize Firestore
+console.log("Firebase Firestore: Initialized.");
+
+if (typeof window !== 'undefined') {
   console.log("Firebase App Check: Attempting to configure on client...");
   const recaptchaSiteKey = process.env.NEXT_PUBLIC_FIREBASE_RECAPTCHA_SITE_KEY;
 
   if (recaptchaSiteKey && recaptchaSiteKey !== 'YOUR_RECAPTCHA_V3_SITE_KEY_HERE' && recaptchaSiteKey.trim() !== '') {
     console.log("Firebase App Check: reCAPTCHA v3 site key IS PRESENT in environment variables.");
     
-    // Explicitly ensure debug token is not interfering if it was set previously
-    if ((window as any).FIREBASE_APPCHECK_DEBUG_TOKEN === true) {
-        console.warn("Firebase App Check: FIREBASE_APPCHECK_DEBUG_TOKEN was set to true. Unsetting it to use reCAPTCHA provider.");
-        delete (window as any).FIREBASE_APPCHECK_DEBUG_TOKEN;
-    } else {
-        (window as any).FIREBASE_APPCHECK_DEBUG_TOKEN = false; // Also ensures it's not true
-    }
+    (window as any).FIREBASE_APPCHECK_DEBUG_TOKEN = false;
 
     try {
       appCheckInstance = initializeAppCheck(app, {
@@ -72,7 +65,4 @@ if (typeof window !== 'undefined') { // Ensure App Check is initialized only on 
   console.log("Firebase App Check: Not on client, skipping initialization.");
 }
 
-// firestore = getFirestore(app); // Uncomment if you plan to use Firestore
-// storage = getStorage(app); // Uncomment if you plan to use Firebase Storage
-
-export { app, auth, appCheckInstance as appCheck /*, firestore, storage */ };
+export { app, auth, firestore, appCheckInstance as appCheck };

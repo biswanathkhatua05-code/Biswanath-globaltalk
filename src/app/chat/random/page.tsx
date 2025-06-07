@@ -1,90 +1,143 @@
+
 "use client";
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { Button } from '@/components/ui/button';
 import { ChatInterface } from '@/components/chat-interface';
-import type { User, Message } from '@/lib/types';
+import type { User } from '@/lib/types'; // Message type is handled by ChatInterface
 import { Loader2, UserCheck, UserX } from 'lucide-react';
 import { useAuth } from '@/context/auth-context';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { firestore } from '@/lib/firebase';
+import { collection, addDoc, serverTimestamp, query, where, getDocs, updateDoc, doc, limit, orderBy, onSnapshot, Timestamp, DocumentData } from 'firebase/firestore';
+import { useToast } from '@/hooks/use-toast';
+
+
+const CHAT_SESSIONS_COLLECTION = 'random_chat_sessions_pool';
 
 export default function RandomChatPage() {
   const [isSearching, setIsSearching] = useState(false);
   const [partner, setPartner] = useState<User | null>(null);
   const [chatSessionId, setChatSessionId] = useState<string | null>(null);
-  const [chatMessages, setChatMessages] = useState<Message[]>([]);
-  const { userId } = useAuth();
+  const { userId, firebaseUser } = useAuth();
+  const { toast } = useToast();
 
-  const findPartner = () => {
+  const currentUser: User | undefined = firebaseUser ? { 
+    id: firebaseUser.uid, 
+    name: firebaseUser.displayName || `Stranger ${firebaseUser.uid.substring(0,4)}`,
+    avatarUrl: firebaseUser.photoURL || `https://placehold.co/100x100/E0E0E0/757575?text=${(firebaseUser.displayName || 'S').charAt(0).toUpperCase()}`
+  } : undefined;
+
+
+  const findPartner = useCallback(async () => {
+    if (!currentUser) {
+      toast({ title: "Error", description: "User not logged in.", variant: "destructive" });
+      return;
+    }
     setIsSearching(true);
     setPartner(null);
-    setChatMessages([]); // Clear previous messages
+    setChatSessionId(null);
 
-    // Simulate finding a partner
-    setTimeout(() => {
-      const randomId = `partner_${Math.random().toString(36).substring(2, 9)}`;
-      const newPartner: User = {
-        id: randomId,
-        name: `Stranger ${randomId.substring(0,4)}`,
-        avatarUrl: `https://placehold.co/100x100/E0E0E0/757575?text=${randomId.charAt(0).toUpperCase()}`,
-      };
-      setPartner(newPartner);
-      setChatSessionId(`random_chat_${Date.now()}`);
+    try {
+      const sessionsRef = collection(firestore, CHAT_SESSIONS_COLLECTION);
+      const q = query(
+        sessionsRef, 
+        where("status", "==", "waiting"), 
+        where("userId1", "!=", currentUser.id), // Don't match with self
+        limit(1)
+      );
+      
+      const querySnapshot = await getDocs(q);
+
+      if (!querySnapshot.empty) {
+        // Found a waiting partner
+        const sessionDoc = querySnapshot.docs[0];
+        const sessionData = sessionDoc.data() as DocumentData;
+
+        const newPartnerUser = sessionData.user1 as User;
+
+        await updateDoc(doc(firestore, CHAT_SESSIONS_COLLECTION, sessionDoc.id), {
+          userId2: currentUser.id,
+          user2: currentUser,
+          status: "active",
+          updatedAt: serverTimestamp(),
+        });
+        
+        setPartner(newPartnerUser);
+        setChatSessionId(sessionDoc.id); // This ID will be used for messages subcollection
+        toast({ title: "Partner Found!", description: `You are now chatting with ${newPartnerUser.name}.` });
+        
+      } else {
+        // No waiting partner, create a new session and wait
+        const newSessionRef = await addDoc(sessionsRef, {
+          userId1: currentUser.id,
+          user1: currentUser,
+          status: "waiting",
+          createdAt: serverTimestamp(),
+          updatedAt: serverTimestamp(),
+        });
+        setChatSessionId(newSessionRef.id);
+        // User will wait. Listen for another user to join this session.
+        // A listener can be set up here, or a timeout can prompt to search again.
+        // For simplicity, we'll rely on the user potentially clicking "Find Partner" again or
+        // implement a listener for this specific doc if needed later.
+        toast({ title: "Searching...", description: "Waiting for a partner to connect. This may take a moment."});
+
+        // Optional: Set up a listener for this specific session
+        const unsub = onSnapshot(doc(firestore, CHAT_SESSIONS_COLLECTION, newSessionRef.id), (docSnap) => {
+            if (docSnap.exists()) {
+                const data = docSnap.data();
+                if (data.status === "active" && data.user2) {
+                    setPartner(data.user2 as User);
+                    toast({ title: "Partner Connected!", description: `You are now chatting with ${data.user2.name}.` });
+                    unsub(); // Stop listening once partner is found
+                }
+            }
+        });
+        // Cleanup listener if component unmounts or search is restarted
+        // This would ideally be handled in a useEffect cleanup
+      }
+    } catch (error) {
+      console.error("Error finding partner:", error);
+      toast({ title: "Search Failed", description: "Could not find a partner. Please try again.", variant: "destructive"});
+    } finally {
       setIsSearching(false);
-      // Add a welcome message from the "partner"
-      setChatMessages([{
-        id: `welcome_${Date.now()}`,
-        text: `Hi there! You've connected with ${newPartner.name}.`,
-        timestamp: Date.now(),
-        user: newPartner,
-        isSender: false,
-      }]);
-    }, 2000);
-  };
+    }
+  }, [currentUser, toast]);
 
-  const handleDisconnect = () => {
+  const handleDisconnect = useCallback(async () => {
+    if (chatSessionId) {
+      try {
+        // Update session status to 'disconnected' or delete it
+        await updateDoc(doc(firestore, CHAT_SESSIONS_COLLECTION, chatSessionId), {
+          status: "disconnected",
+          disconnectedAt: serverTimestamp(),
+        });
+        // Or, if you prefer to delete: await deleteDoc(doc(firestore, CHAT_SESSIONS_COLLECTION, chatSessionId));
+        toast({title: "Disconnected", description: "You have left the chat."})
+      } catch (error) {
+        console.error("Error disconnecting chat session:", error);
+        toast({title: "Disconnection Failed", description: "Could not update chat status.", variant: "destructive"})
+      }
+    }
     setPartner(null);
     setChatSessionId(null);
-    setChatMessages([]);
-    // Optionally, add a message indicating disconnection
-  };
-
-  // Simulate receiving messages from partner for demo
-  useEffect(() => {
-    let intervalId: NodeJS.Timeout;
-    if (partner && userId) {
-      intervalId = setInterval(() => {
-        setChatMessages(prev => [
-          ...prev,
-          {
-            id: `partner_msg_${Date.now()}`,
-            text: `This is a simulated message from ${partner.name}. Random number: ${Math.floor(Math.random() * 100)}`,
-            timestamp: Date.now(),
-            user: partner,
-            isSender: false,
-          }
-        ]);
-      }, 15000); // Every 15 seconds
-    }
-    return () => clearInterval(intervalId);
-  }, [partner, userId]);
+  }, [chatSessionId, toast]);
 
 
-  if (!userId) {
+  if (!userId || !currentUser) {
     return <div className="flex items-center justify-center h-full"><Loader2 className="h-8 w-8 animate-spin text-primary" /> <span className="ml-2">Loading user data...</span></div>;
   }
 
   if (partner && chatSessionId) {
     return (
-      <div className="h-[calc(100vh-10rem)] md:h-[calc(100vh-12rem)]"> {/* Adjust height based on header/footer */}
+      <div className="h-[calc(100vh-10rem)] md:h-[calc(100vh-12rem)]">
         <ChatInterface
-          chatId={chatSessionId}
-          chatMode="random"
+          chatId={chatSessionId} // This will be the document ID in CHAT_SESSIONS_COLLECTION
+          chatMode="random" // ChatInterface will use this to construct path like `random_chat_sessions_pool/${chatSessionId}/messages`
           chatTitle={`Chat with ${partner.name}`}
-          initialMessages={chatMessages}
           partner={partner}
           showDisconnectButton={true}
           onDisconnect={handleDisconnect}
-          // onSendMessage could be implemented to "send" to this simulated partner
         />
       </div>
     );
@@ -97,7 +150,7 @@ export default function RandomChatPage() {
           <UserCheck className="mx-auto h-16 w-16 text-primary mb-4" />
           <CardTitle className="text-2xl font-bold">Ready for a Random Chat?</CardTitle>
           <CardDescription>
-            Click the button below to connect with a random user from around the globe.
+            Click the button below to connect with a random user.
             Be respectful and enjoy the conversation!
           </CardDescription>
         </CardHeader>
@@ -112,7 +165,12 @@ export default function RandomChatPage() {
               Find Partner
             </Button>
           )}
-           {partner === null && !isSearching && (
+           {!partner && !isSearching && chatSessionId && (
+             <p className="mt-4 text-sm text-muted-foreground">
+               Waiting for a partner... If this takes too long, you can try finding another partner.
+             </p>
+           )}
+           {!partner && !isSearching && !chatSessionId && (
              <p className="mt-4 text-sm text-muted-foreground">
                Click "Find Partner" to start a new anonymous chat.
              </p>

@@ -1,11 +1,22 @@
+
 import type { Message } from '@/lib/types';
 import { cn } from '@/lib/utils';
 import { UserAvatar } from './user-avatar';
 import { AlertTriangle, CheckCircle, Clock, Paperclip, Mic } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
+import { Timestamp } from 'firebase/firestore';
 
 interface MessageBubbleProps {
   message: Message;
+}
+
+function formatTimestamp(timestamp: Timestamp | number): string {
+  if (timestamp instanceof Timestamp) {
+    return timestamp.toDate().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  } else if (typeof timestamp === 'number') {
+    return new Date(timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  }
+  return 'Invalid date';
 }
 
 export function MessageBubble({ message }: MessageBubbleProps) {
@@ -40,7 +51,9 @@ export function MessageBubble({ message }: MessageBubbleProps) {
         {!isSender && message.user.name && (
           <p className="text-xs font-semibold mb-1 text-muted-foreground">{message.user.name}</p>
         )}
-        <p className="whitespace-pre-wrap break-words text-sm leading-relaxed">{message.text}</p>
+
+        {message.text && <p className="whitespace-pre-wrap break-words text-sm leading-relaxed">{message.text}</p>}
+        
         {message.fileUrl && (
           <a 
             href={message.fileUrl} 
@@ -55,8 +68,7 @@ export function MessageBubble({ message }: MessageBubbleProps) {
         {message.voiceNoteUrl && (
            <div className="mt-2 flex items-center gap-2 text-xs p-2 rounded-md bg-black/5 dark:bg-white/5">
             <Mic size={14} />
-            <span>Voice Note</span>
-            {/* Basic placeholder for voice note, actual player would be more complex */}
+            <span>{message.fileName || 'Voice Note'}</span>
             <audio controls src={message.voiceNoteUrl} className="h-8 w-full max-w-xs"></audio>
           </div>
         )}
@@ -67,7 +79,7 @@ export function MessageBubble({ message }: MessageBubbleProps) {
         )}
         <div className={cn("mt-1.5 flex items-center gap-1", isSender ? "justify-end" : "justify-start")}>
           <span className="text-xs opacity-70">
-            {new Date(message.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+            {formatTimestamp(message.timestamp)}
           </span>
           {isSender && renderStatusIcon()}
         </div>

@@ -1,62 +1,65 @@
+
 "use client";
 import { ChatInterface } from '@/components/chat-interface';
-import type { Message, User } from '@/lib/types';
+import type { User } from '@/lib/types';
 import { useAuth } from '@/context/auth-context';
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useMemo } from 'react';
 import { Loader2, UserCircle, ArrowLeft } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import Link from 'next/link';
 import { useParams } from 'next/navigation';
+import { doc, getDoc } from 'firebase/firestore';
+import { firestore } from '@/lib/firebase';
 
 export default function PrivateChatPage() {
   const params = useParams();
-  const chatId = params.chatId as string; // This would be the friend's UID or a session ID
-  const { userId } = useAuth();
+  const friendUid = params.chatId as string; 
+  const { userId, firebaseUser } = useAuth();
   const [isLoading, setIsLoading] = useState(true);
   const [friendUser, setFriendUser] = useState<User | null>(null);
-  const [initialMessages, setInitialMessages] = useState<Message[]>([]);
+  
+  // Determine the chat room ID consistently
+  const chatRoomId = useMemo(() => {
+    if (!userId || !friendUid) return null;
+    // Create a consistent ID by sorting UIDs
+    return [userId, friendUid].sort().join('_');
+  }, [userId, friendUid]);
 
   useEffect(() => {
-    if (chatId && userId) {
+    if (friendUid && userId) {
       setIsLoading(true);
-      // Simulate fetching friend's details and past messages
-      setTimeout(() => {
-        const fetchedFriend: User = {
-          id: chatId,
-          name: `User ${chatId.substring(0, 5)}...`, // Shortened UID or fetched name
-          avatarUrl: `https://placehold.co/100x100/78909C/FFFFFF?text=${chatId.charAt(0).toUpperCase()}`,
-        };
-        setFriendUser(fetchedFriend);
+      // Simulate fetching friend's details. In a real app, you'd fetch this from a 'users' collection.
+      // For now, we'll just create a placeholder.
+      // If you have a users collection, you would do:
+      // const fetchFriendData = async () => {
+      //   const userDoc = await getDoc(doc(firestore, 'users', friendUid));
+      //   if (userDoc.exists()) {
+      //     setFriendUser({ id: userDoc.id, ...userDoc.data() } as User);
+      //   } else {
+      //     // Handle user not found
+      //     setFriendUser({ id: friendUid, name: `User ${friendUid.substring(0, 5)}...`});
+      //   }
+      //   setIsLoading(false);
+      // };
+      // fetchFriendData();
 
-        // Simulate some initial messages
-        setInitialMessages([
-          {
-            id: `msg_welcome_${Date.now()}`,
-            text: `You are now chatting with ${fetchedFriend.name}.`,
-            timestamp: Date.now() - 1000,
-            user: { id: 'system', name: 'System' },
-            isSender: false,
-          },
-          // Example message from the "friend"
-          {
-            id: `msg_friend_${Date.now()}`,
-            text: `Hey there! Good to chat with you.`,
-            timestamp: Date.now() - 500,
-            user: fetchedFriend,
-            isSender: false,
-          }
-        ]);
-        setIsLoading(false);
-      }, 1000);
+      // Placeholder friend data:
+      const fetchedFriend: User = {
+        id: friendUid,
+        name: `User ${friendUid.substring(0, 5)}...`, 
+        avatarUrl: `https://placehold.co/100x100/78909C/FFFFFF?text=${friendUid.charAt(0).toUpperCase()}`,
+      };
+      setFriendUser(fetchedFriend);
+      setIsLoading(false);
     }
-  }, [chatId, userId]);
+  }, [friendUid, userId]);
 
-  if (isLoading || !userId || !friendUser) {
+  if (isLoading || !userId || !friendUser || !chatRoomId) {
     return (
       <div className="flex flex-col items-center justify-center h-full p-4">
         <Loader2 className="h-12 w-12 animate-spin text-primary mb-4" />
         <p className="text-lg text-muted-foreground">
-          {isLoading ? `Loading chat with ${chatId}...` : 'Preparing your chat...'}
+          {isLoading ? `Loading chat with ${friendUid}...` : 'Preparing your chat...'}
         </p>
         <Link href="/chat/find" passHref className="mt-4">
           <Button variant="outline">
@@ -70,12 +73,10 @@ export default function PrivateChatPage() {
   return (
     <div className="h-[calc(100vh-10rem)] md:h-[calc(100vh-12rem)]">
       <ChatInterface
-        chatId={chatId}
+        chatId={chatRoomId} // Use the consistent chatRoomId
         chatMode="private"
         chatTitle={`Chat with ${friendUser.name}`}
         partner={friendUser}
-        initialMessages={initialMessages}
-        // onSendMessage would send to this specific user via backend
       />
     </div>
   );

@@ -14,30 +14,30 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/comp
 import { UserAvatar } from '@/components/user-avatar';
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { cn } from '@/lib/utils';
+import { firestore } from '@/lib/firebase'; // Import firestore
+import { collection, addDoc, serverTimestamp, query, orderBy, onSnapshot, Timestamp, where, limit, doc, setDoc, getDoc, updateDoc, arrayUnion } from 'firebase/firestore'; // Firestore imports
 
 interface ChatInterfaceProps {
-  chatId: string; // Unique ID for this chat session/room
+  chatId: string; 
   chatMode: ChatMode;
   chatTitle?: string;
-  initialMessages?: Message[];
-  onSendMessage?: (message: Message) => Promise<void>; // For "sending" to backend
+  // initialMessages removed as messages will come from Firestore
+  // onSendMessage removed as it will be handled internally
   showDisconnectButton?: boolean;
   onDisconnect?: () => void;
-  partner?: User; // For 1-on-1 chats
+  partner?: User; 
 }
 
 export function ChatInterface({
   chatId,
   chatMode,
   chatTitle = "Chat",
-  initialMessages = [],
-  onSendMessage,
   showDisconnectButton = false,
   onDisconnect,
   partner,
 }: ChatInterfaceProps) {
-  const { userId, isLoggedIn } = useAuth();
-  const [messages, setMessages] = useState<Message[]>(initialMessages);
+  const { userId, isLoggedIn, firebaseUser } = useAuth();
+  const [messages, setMessages] = useState<Message[]>([]);
   const [inputValue, setInputValue] = useState('');
   const { checkMessage, isLoading: isModerating, error: moderationError } = useChatModeration();
   const { toast } = useToast();
@@ -52,14 +52,56 @@ export function ChatInterface({
   const [isCameraOff, setIsCameraOff] = useState(false);
   const [currentFacingMode, setCurrentFacingMode] = useState<'user' | 'environment'>('user');
 
-
   const [isRecording, setIsRecording] = useState(false);
   const [micPermissionStatus, setMicPermissionStatus] = useState<'idle' | 'pending' | 'granted' | 'denied'>('idle');
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const audioChunksRef = useRef<Blob[]>([]);
 
+  const currentUser: User | undefined = firebaseUser ? { id: firebaseUser.uid, name: firebaseUser.displayName || 'You', avatarUrl: firebaseUser.photoURL || undefined } : undefined;
 
-  const currentUser: User | undefined = userId ? { id: userId, name: 'You' } : undefined;
+  // Firestore collection path based on chatMode
+  const getMessagesCollectionPath = useCallback(() => {
+    if (chatMode === 'global') return 'global_messages';
+    // For private and random, chatId can be the collection name or part of it
+    return `chat_sessions/${chatId}/messages`;
+  }, [chatMode, chatId]);
+
+
+  useEffect(() => {
+    if (!chatId || !isLoggedIn) return;
+
+    const messagesCollectionPath = getMessagesCollectionPath();
+    const q = query(collection(firestore, messagesCollectionPath), orderBy("timestamp", "asc"), limit(100));
+
+    const unsubscribe = onSnapshot(q, (querySnapshot) => {
+      const fetchedMessages: Message[] = [];
+      querySnapshot.forEach((doc) => {
+        const data = doc.data();
+        fetchedMessages.push({
+          id: doc.id,
+          text: data.text,
+          timestamp: data.timestamp, // Firestore Timestamp
+          user: data.user, // Assuming user object is stored
+          userId: data.userId,
+          isSender: data.userId === userId,
+          status: 'sent', // Assume sent if from Firestore
+          voiceNoteUrl: data.voiceNoteUrl,
+          fileName: data.fileName,
+        });
+      });
+      setMessages(fetchedMessages);
+    }, (error) => {
+      console.error("Error fetching messages from Firestore:", error);
+      toast({
+        title: "Error Loading Messages",
+        description: "Could not fetch messages. Please try again later.",
+        variant: "destructive",
+      });
+    });
+
+    return () => unsubscribe();
+  }, [chatId, isLoggedIn, userId, toast, getMessagesCollectionPath]);
+
 
   useEffect(() => {
     if (!showVideoCall && scrollAreaRef.current) {
@@ -80,53 +122,66 @@ export function ChatInterface({
     }
   }, [moderationError, toast]);
 
-  const handleSendMessage = useCallback(async () => {
-    if (!inputValue.trim() || !currentUser || !isLoggedIn) return;
+  const handleSendMessage = useCallback(async (messageText: string, voiceNoteDetails?: { voiceNoteUrl: string, fileName: string }) => {
+    if ((!messageText.trim() && !voiceNoteDetails) || !currentUser || !isLoggedIn) return;
 
-    const tempMessageId = `msg_${Date.now()}`;
+    const messagesCollectionPath = getMessagesCollectionPath();
+
+    // Optimistic update (optional, but good for UX)
+    const tempMessageId = `temp_${Date.now()}`;
     const optimisticMessage: Message = {
       id: tempMessageId,
-      text: inputValue,
-      timestamp: Date.now(),
+      text: messageText,
+      timestamp: Timestamp.now(), // Use Firestore Timestamp for optimistic as well
       user: currentUser,
+      userId: currentUser.id,
       isSender: true,
       status: 'sending',
+      ...(voiceNoteDetails && { voiceNoteUrl: voiceNoteDetails.voiceNoteUrl, fileName: voiceNoteDetails.fileName }),
     };
-
-    setMessages(prev => [...prev, optimisticMessage]);
-    const messageToSend = inputValue;
-    setInputValue('');
+    // setMessages(prev => [...prev, optimisticMessage]); // Firestore listener will handle this
 
     try {
-      const moderationResult = await checkMessage({ message: messageToSend, userUid: currentUser.id });
-
-      if (!moderationResult.isSafe) {
-        setMessages(prev => prev.map(m => m.id === tempMessageId ? { ...m, status: 'moderated', moderationReason: moderationResult.reason || 'Content policy violation' } : m));
-        toast({
-          title: "Message Moderated",
-          description: moderationResult.reason || "Your message violates our content policy and was not sent.",
-          variant: "destructive",
-          duration: 5000,
-        });
-        return;
+      if (!voiceNoteDetails) { // Only moderate text messages
+        const moderationResult = await checkMessage({ message: messageText, userUid: currentUser.id });
+        if (!moderationResult.isSafe) {
+          // setMessages(prev => prev.map(m => m.id === tempMessageId ? { ...m, status: 'moderated', moderationReason: moderationResult.reason || 'Content policy violation' } : m));
+          toast({
+            title: "Message Moderated",
+            description: moderationResult.reason || "Your message violates our content policy and was not sent.",
+            variant: "destructive",
+            duration: 5000,
+          });
+          return; // Do not send moderated message
+        }
       }
 
-      if (onSendMessage) {
-        await onSendMessage(optimisticMessage);
-      }
-      
-      setMessages(prev => prev.map(m => m.id === tempMessageId ? { ...m, status: 'sent' } : m));
+      const messageData: Omit<Message, 'id' | 'isSender' | 'status'> = {
+        text: messageText,
+        timestamp: serverTimestamp(), // Use server timestamp for actual storage
+        user: { // Store a simplified user object or just userId
+          id: currentUser.id,
+          name: currentUser.name || "Anonymous",
+          avatarUrl: currentUser.avatarUrl || `https://placehold.co/100x100/78909C/FFFFFF?text=${(currentUser.name || 'A').charAt(0).toUpperCase()}`,
+        },
+        userId: currentUser.id,
+        ...(voiceNoteDetails && { voiceNoteUrl: voiceNoteDetails.voiceNoteUrl, fileName: voiceNoteDetails.fileName }),
+      };
 
+      await addDoc(collection(firestore, messagesCollectionPath), messageData);
+      // Firestore listener will update the messages list, so manual update to 'sent' is not strictly needed here
+      // setMessages(prev => prev.map(m => m.id === tempMessageId ? { ...m, status: 'sent' } : m));
     } catch (error) {
-      console.error("Error sending message:", error);
-      setMessages(prev => prev.map(m => m.id === tempMessageId ? { ...m, status: 'failed' } : m));
+      console.error("Error sending message to Firestore:", error);
+      // setMessages(prev => prev.map(m => m.id === tempMessageId ? { ...m, status: 'failed' } : m));
       toast({
         title: "Message Failed",
         description: "Could not send your message. Please try again.",
         variant: "destructive",
       });
     }
-  }, [inputValue, currentUser, isLoggedIn, checkMessage, toast, onSendMessage]);
+  }, [currentUser, isLoggedIn, checkMessage, toast, getMessagesCollectionPath]);
+
 
   const stopMediaStream = useCallback(() => {
     if (streamRef.current) {
@@ -141,12 +196,12 @@ export function ChatInterface({
   const handleVideoCallClick = useCallback(() => {
     setShowVideoCall(prev => {
       const newShowVideoCallState = !prev;
-      if (!newShowVideoCallState) { // Turning off video call
+      if (!newShowVideoCallState) { 
         stopMediaStream();
         setHasCameraPermission(null);
         setIsMicMuted(false);
         setIsCameraOff(false);
-        setCurrentFacingMode('user'); // Reset to default facing mode
+        setCurrentFacingMode('user'); 
       }
       return newShowVideoCallState;
     });
@@ -157,7 +212,6 @@ export function ChatInterface({
       if (typeof window !== 'undefined' && navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
         setHasCameraPermission(null); 
         try {
-          // Stop any existing stream before requesting a new one, especially for camera switch
           if (streamRef.current) {
             streamRef.current.getTracks().forEach(track => track.stop());
           }
@@ -181,7 +235,6 @@ export function ChatInterface({
             description: 'Could not access the requested camera/microphone. Please check permissions or try a different camera.',
           });
           stopMediaStream(); 
-          // setShowVideoCall(false); // Keep panel open to show error, or close:
         }
       } else {
         setHasCameraPermission(false);
@@ -200,7 +253,6 @@ export function ChatInterface({
       stopMediaStream();
     }
 
-    // Cleanup function to stop media stream when component unmounts or dependencies change before re-running effect
     return () => {
       stopMediaStream();
     };
@@ -256,34 +308,15 @@ export function ChatInterface({
   
       mediaRecorderRef.current.onstop = async () => {
         const audioBlob = new Blob(audioChunksRef.current, { type: 'audio/webm' });
-        const audioUrl = URL.createObjectURL(audioBlob);
+        const audioUrl = URL.createObjectURL(audioBlob); // This URL is temporary and client-side
         
-        const tempMessageId = `msg_vn_${Date.now()}`;
-        const optimisticMessage: Message = {
-          id: tempMessageId,
-          text: '', 
-          timestamp: Date.now(),
-          user: currentUser,
-          isSender: true,
-          status: 'sending',
-          voiceNoteUrl: audioUrl,
-          fileName: `Voice Note ${new Date().toLocaleTimeString()}.webm`,
-        };
-  
-        setMessages(prev => [...prev, optimisticMessage]);
-  
-        if (onSendMessage) {
-          try {
-            await onSendMessage(optimisticMessage);
-            setMessages(prev => prev.map(m => m.id === tempMessageId ? { ...m, status: 'sent' } : m));
-          } catch (error) {
-            console.error("Error sending voice note message:", error);
-            setMessages(prev => prev.map(m => m.id === tempMessageId ? { ...m, status: 'failed' } : m));
-          }
-        } else {
-          setMessages(prev => prev.map(m => m.id === tempMessageId ? { ...m, status: 'sent' } : m));
-        }
-        stream.getTracks().forEach(track => track.stop());
+        // For Firestore, you'd typically upload the Blob to Firebase Storage 
+        // and then save the storage URL in Firestore.
+        // For now, we'll just send a placeholder or skip true storage of voice note for simplicity in this step.
+        // Let's send the temporary client-side URL.
+        await handleSendMessage("", { voiceNoteUrl: audioUrl, fileName: `Voice Note ${new Date().toLocaleTimeString()}.webm` });
+        
+        stream.getTracks().forEach(track => track.stop()); // Stop microphone stream after recording
       };
   
       mediaRecorderRef.current.start();
@@ -476,7 +509,10 @@ export function ChatInterface({
         <form
           onSubmit={(e) => {
             e.preventDefault();
-            handleSendMessage();
+            if (inputValue.trim()) {
+                handleSendMessage(inputValue);
+                setInputValue('');
+            }
           }}
           className="flex items-center gap-2"
         >
@@ -537,4 +573,3 @@ export function ChatInterface({
     </div>
   );
 }
-

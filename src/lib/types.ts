@@ -1,3 +1,5 @@
+import type { Timestamp } from 'firebase/firestore';
+
 export interface User {
   id: string;
   name?: string;
@@ -5,11 +7,12 @@ export interface User {
 }
 
 export interface Message {
-  id: string;
+  id: string; // Firestore document ID
   text: string;
-  timestamp: number;
-  user: User;
-  isSender: boolean; // True if the current user sent this message
+  timestamp: Timestamp | number; // Firestore Timestamp or client-side number before conversion
+  user: User; // Simplified user object, consider storing only userId in Firestore and denormalizing if needed
+  userId: string; // Store userId directly for easier querying
+  isSender: boolean; // True if the current user sent this message (client-side only)
   status?: 'sending' | 'sent' | 'failed' | 'moderated'; // Optional message status
   moderationReason?: string; // If moderated
   fileUrl?: string;
