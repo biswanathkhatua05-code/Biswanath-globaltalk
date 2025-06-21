@@ -61,16 +61,27 @@ export function ChatInterface({
 
   // Firestore collection path based on chatMode
   const getMessagesCollectionPath = useCallback(() => {
-    if (chatMode === 'global') return 'global_messages';
-    // For private and random, chatId can be the collection name or part of it
-    return `chat_sessions/${chatId}/messages`;
+    if (!chatId) return null;
+    switch (chatMode) {
+      case 'global':
+        return 'global_messages';
+      case 'random':
+        return `random_chat_sessions_pool/${chatId}/messages`;
+      case 'private':
+        return `chat_sessions/${chatId}/messages`;
+      default:
+        console.error("Invalid chat mode provided:", chatMode);
+        return null;
+    }
   }, [chatMode, chatId]);
 
 
   useEffect(() => {
-    if (!chatId || !isLoggedIn) return;
-
+    if (!isLoggedIn) return;
+    
     const messagesCollectionPath = getMessagesCollectionPath();
+    if (!messagesCollectionPath) return;
+
     const q = query(collection(firestore, messagesCollectionPath), orderBy("timestamp", "asc"), limit(100));
 
     const unsubscribe = onSnapshot(q, (querySnapshot) => {
@@ -100,7 +111,7 @@ export function ChatInterface({
     });
 
     return () => unsubscribe();
-  }, [chatId, isLoggedIn, userId, toast, getMessagesCollectionPath]);
+  }, [isLoggedIn, userId, toast, getMessagesCollectionPath]);
 
 
   useEffect(() => {
@@ -126,6 +137,10 @@ export function ChatInterface({
     if ((!messageText.trim() && !voiceNoteDetails) || !currentUser || !isLoggedIn) return;
 
     const messagesCollectionPath = getMessagesCollectionPath();
+    if (!messagesCollectionPath) {
+      toast({ title: "Cannot Send Message", description: "Invalid chat session.", variant: "destructive" });
+      return;
+    }
 
     // Optimistic update (optional, but good for UX)
     const tempMessageId = `temp_${Date.now()}`;
@@ -312,7 +327,7 @@ export function ChatInterface({
         
         // For Firestore, you'd typically upload the Blob to Firebase Storage 
         // and then save the storage URL in Firestore.
-        // For now, we'll just send a placeholder or skip true storage of voice note for simplicity in this step.
+        // For now, we'll just send the placeholder or skip true storage of voice note for simplicity in this step.
         // Let's send the temporary client-side URL.
         await handleSendMessage("", { voiceNoteUrl: audioUrl, fileName: `Voice Note ${new Date().toLocaleTimeString()}.webm` });
         
