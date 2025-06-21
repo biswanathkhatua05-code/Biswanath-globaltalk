@@ -39,18 +39,21 @@ export default function RandomChatPage() {
 
     try {
       const sessionsRef = collection(firestore, CHAT_SESSIONS_COLLECTION);
+      
+      // Simplified query to avoid needing a composite index. We filter for the user client-side.
       const q = query(
         sessionsRef, 
         where("status", "==", "waiting"), 
-        where("userId1", "!=", currentUser.id), // Don't match with self
-        limit(1)
+        limit(10) // Fetch up to 10 waiting sessions
       );
       
       const querySnapshot = await getDocs(q);
 
-      if (!querySnapshot.empty) {
+      // Find the first session that is not started by the current user
+      const sessionDoc = querySnapshot.docs.find(doc => doc.data().userId1 !== currentUser.id);
+
+      if (sessionDoc) {
         // Found a waiting partner
-        const sessionDoc = querySnapshot.docs[0];
         const sessionData = sessionDoc.data() as DocumentData;
 
         const newPartnerUser = sessionData.user1 as User;
@@ -67,7 +70,7 @@ export default function RandomChatPage() {
         toast({ title: "Partner Found!", description: `You are now chatting with ${newPartnerUser.name}.` });
         
       } else {
-        // No waiting partner, create a new session and wait
+        // No suitable waiting partner found, create a new session and wait
         const newSessionRef = await addDoc(sessionsRef, {
           userId1: currentUser.id,
           user1: currentUser,
@@ -77,12 +80,8 @@ export default function RandomChatPage() {
         });
         setChatSessionId(newSessionRef.id);
         // User will wait. Listen for another user to join this session.
-        // A listener can be set up here, or a timeout can prompt to search again.
-        // For simplicity, we'll rely on the user potentially clicking "Find Partner" again or
-        // implement a listener for this specific doc if needed later.
         toast({ title: "Searching...", description: "Waiting for a partner to connect. This may take a moment."});
 
-        // Optional: Set up a listener for this specific session
         const unsub = onSnapshot(doc(firestore, CHAT_SESSIONS_COLLECTION, newSessionRef.id), (docSnap) => {
             if (docSnap.exists()) {
                 const data = docSnap.data();
@@ -93,8 +92,6 @@ export default function RandomChatPage() {
                 }
             }
         });
-        // Cleanup listener if component unmounts or search is restarted
-        // This would ideally be handled in a useEffect cleanup
       }
     } catch (error) {
       console.error("Error finding partner:", error);
