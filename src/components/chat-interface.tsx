@@ -57,7 +57,7 @@ export function ChatInterface({
   const [isCallActive, setIsCallActive] = useState(false);
   const [hasCameraPermission, setHasCameraPermission] = useState<boolean | null>(null);
   const [isPiPSupported, setIsPiPSupported] = useState(false);
-  const localVideoRef = useRef<HTMLVideoElement>(null); // Renamed from videoRef
+  const localVideoRef = useRef<HTMLVideoElement>(null);
   const remoteVideoRef = useRef<HTMLVideoElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const peerConnectionRef = useRef<RTCPeerConnection | null>(null);
@@ -85,6 +85,7 @@ export function ChatInterface({
       case 'global':
         return 'global_messages';
       case 'random':
+        return `random_chat_sessions_pool/${chatId}/messages`;
       case 'private':
         return `chat_sessions/${chatId}/messages`;
       default:
@@ -197,59 +198,10 @@ export function ChatInterface({
     }
   }, [currentUser, isLoggedIn, checkMessage, toast, getMessagesCollectionPath]);
 
-
-  const stopMediaStream = useCallback(() => {
-    if (streamRef.current) {
-      streamRef.current.getTracks().forEach(track => track.stop());
-      streamRef.current = null;
-    }
-    if (localVideoRef.current) {
-      localVideoRef.current.srcObject = null;
-    }
-    if (remoteVideoRef.current) {
-        remoteVideoRef.current.srcObject = null;
-    }
-  }, []);
-
-  const cleanupCall = useCallback(async () => {
-    // Close peer connection
-    if (peerConnectionRef.current) {
-        peerConnectionRef.current.close();
-        peerConnectionRef.current = null;
-    }
-
-    // Clean up Firestore signaling documents
-    if (chatId) {
-        try {
-            const callDocRef = doc(firestore, 'video_calls', chatId);
-            const offerCandidatesRef = collection(callDocRef, 'offerCandidates');
-            const answerCandidatesRef = collection(callDocRef, 'answerCandidates');
-            
-            const [offerCandidatesSnap, answerCandidatesSnap] = await Promise.all([
-                getDocs(offerCandidatesRef),
-                getDocs(answerCandidatesRef)
-            ]);
-            
-            const deletePromises: Promise<void>[] = [];
-            offerCandidatesSnap.forEach(doc => deletePromises.push(deleteDoc(doc.ref)));
-            answerCandidatesSnap.forEach(doc => deletePromises.push(deleteDoc(doc.ref)));
-            await Promise.all(deletePromises);
-
-            await deleteDoc(callDocRef);
-        } catch (error) {
-            console.error("Error cleaning up call documents:", error);
-        }
-    }
-  }, [chatId]);
-
   const handleEndCall = useCallback(() => {
     setIsCallActive(false);
     setShowVideoCall(false);
-    setRemoteStream(null);
-    stopMediaStream();
-    cleanupCall();
-  }, [stopMediaStream, cleanupCall]);
-
+  }, []);
 
   const handleEnterPiP = useCallback(async () => {
     if (localVideoRef.current && document.pictureInPictureEnabled && !document.pictureInPictureElement) {
@@ -282,155 +234,174 @@ export function ChatInterface({
   }, [isCallActive, showVideoCall]);
 
 
+  // Effect for the entire WebRTC call lifecycle
   useEffect(() => {
-    const getMediaStream = async (facingMode: 'user' | 'environment') => {
-      if (typeof window !== 'undefined' && navigator.mediaDevices?.getUserMedia) {
-        setHasCameraPermission(null); 
-        try {
-          if (streamRef.current) {
-            streamRef.current.getTracks().forEach(track => track.stop());
-          }
-
-          const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode }, audio: true });
-          streamRef.current = stream;
-          setHasCameraPermission(true);
-          if (localVideoRef.current) {
-            localVideoRef.current.srcObject = stream;
-          }
-          
-          stream.getAudioTracks().forEach(track => track.enabled = !isMicMuted);
-          stream.getVideoTracks().forEach(track => track.enabled = !isCameraOff);
-
-        } catch (error) {
-          console.error('Error accessing media devices:', error);
-          setHasCameraPermission(false);
-          toast({
-            variant: 'destructive',
-            title: 'Media Access Denied',
-            description: 'Could not access the requested camera/microphone. Please check permissions.',
-          });
-          handleEndCall();
-        }
-      } else {
-        setHasCameraPermission(false);
-        toast({ variant: 'destructive', title: 'Media Not Supported', description: 'Your browser does not support camera/microphone access.' });
-        handleEndCall();
-      }
-    };
-
-    if (isCallActive) {
-      getMediaStream(currentFacingMode);
-    } else {
-      stopMediaStream();
-    }
-
-    return () => {
-      stopMediaStream();
-    };
-  }, [isCallActive, currentFacingMode, toast, stopMediaStream, isMicMuted, isCameraOff, handleEndCall]);
-
-
-  // Effect for WebRTC Signaling and Connection
-  useEffect(() => {
-    if (!isCallActive || !streamRef.current || !chatId) {
-        return;
+    if (!isCallActive || !chatId) {
+      return;
     }
 
     let unsubscribers: (() => void)[] = [];
-    const pc = new RTCPeerConnection(servers);
-    peerConnectionRef.current = pc;
-
-    // Push local tracks to the connection
-    streamRef.current.getTracks().forEach(track => {
-        pc.addTrack(track, streamRef.current!);
-    });
-
-    // Handle remote stream
-    const remoteS = new MediaStream();
-    setRemoteStream(remoteS);
-    if(remoteVideoRef.current) remoteVideoRef.current.srcObject = remoteS;
     
-    pc.ontrack = (event) => {
-        event.streams[0].getTracks().forEach(track => {
-            remoteS.addTrack(track);
-        });
-    };
-
-    const callDocRef = doc(firestore, 'video_calls', chatId);
-    const offerCandidatesRef = collection(callDocRef, 'offerCandidates');
-    const answerCandidatesRef = collection(callDocRef, 'answerCandidates');
-
-    // Exchange ICE candidates
-    pc.onicecandidate = async (event) => {
-        if (event.candidate) {
-            const callDoc = await getDoc(callDocRef);
-            if(callDoc.exists() && callDoc.data().answer) {
-                 await addDoc(answerCandidatesRef, event.candidate.toJSON());
-            } else {
-                 await addDoc(offerCandidatesRef, event.candidate.toJSON());
-            }
-        }
-    };
-
     const setupCall = async () => {
-        const callDocSnap = await getDoc(callDocRef);
+      // --- Part 1: Get Media Stream ---
+      try {
+        setHasCameraPermission(null);
+        const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: currentFacingMode }, audio: true });
+        streamRef.current = stream;
 
-        if (!callDocSnap.exists()) {
-            // Caller: create offer
-            const offerDescription = await pc.createOffer();
-            await pc.setLocalDescription(offerDescription);
-            const offer = { sdp: offerDescription.sdp, type: offerDescription.type };
-            await setDoc(callDocRef, { offer });
-
-            const unsubAnswer = onSnapshot(callDocRef, (snapshot) => {
-                const data = snapshot.data();
-                if (!pc.currentRemoteDescription && data?.answer) {
-                    const answerDescription = new RTCSessionDescription(data.answer);
-                    pc.setRemoteDescription(answerDescription);
-                }
-            });
-            unsubscribers.push(unsubAnswer);
-
-            const unsubAnswerCandidates = onSnapshot(answerCandidatesRef, (snapshot) => {
-                snapshot.docChanges().forEach((change) => {
-                    if (change.type === 'added') {
-                        pc.addIceCandidate(new RTCIceCandidate(change.doc.data()));
-                    }
-                });
-            });
-            unsubscribers.push(unsubAnswerCandidates);
-
-        } else {
-            // Callee: create answer
-            const offer = callDocSnap.data().offer;
-            await pc.setRemoteDescription(new RTCSessionDescription(offer));
-            
-            const answerDescription = await pc.createAnswer();
-            await pc.setLocalDescription(answerDescription);
-            
-            const answer = { type: answerDescription.type, sdp: answerDescription.sdp };
-            await updateDoc(callDocRef, { answer });
-            
-            const unsubOfferCandidates = onSnapshot(offerCandidatesRef, (snapshot) => {
-                snapshot.docChanges().forEach((change) => {
-                    if (change.type === 'added') {
-                       pc.addIceCandidate(new RTCIceCandidate(change.doc.data()));
-                    }
-                });
-            });
-            unsubscribers.push(unsubOfferCandidates);
+        if (localVideoRef.current) {
+          localVideoRef.current.srcObject = stream;
         }
-    };
-    
-    setupCall().catch(e => console.error("Error setting up call:", e));
+        setHasCameraPermission(true);
 
-    // Cleanup function for this effect
+        stream.getAudioTracks().forEach(track => track.enabled = !isMicMuted);
+        stream.getVideoTracks().forEach(track => track.enabled = !isCameraOff);
+      } catch (error) {
+        console.error('Error accessing media devices:', error);
+        setHasCameraPermission(false);
+        toast({
+          variant: 'destructive',
+          title: 'Media Access Denied',
+          description: 'Could not access camera/microphone. Please check permissions.',
+        });
+        handleEndCall();
+        return;
+      }
+
+      // --- Part 2: Setup WebRTC Peer Connection ---
+      const pc = new RTCPeerConnection(servers);
+      peerConnectionRef.current = pc;
+
+      // Add local tracks
+      streamRef.current.getTracks().forEach(track => {
+        pc.addTrack(track, streamRef.current!);
+      });
+
+      // Handle remote stream
+      const remoteS = new MediaStream();
+      setRemoteStream(remoteS);
+      if (remoteVideoRef.current) remoteVideoRef.current.srcObject = remoteS;
+      
+      pc.ontrack = (event) => {
+        event.streams[0].getTracks().forEach(track => {
+          remoteS.addTrack(track);
+        });
+      };
+
+      // --- Part 3: Signaling via Firestore ---
+      const callDocRef = doc(firestore, 'video_calls', chatId);
+      const offerCandidatesRef = collection(callDocRef, 'offerCandidates');
+      const answerCandidatesRef = collection(callDocRef, 'answerCandidates');
+
+      pc.onicecandidate = async (event) => {
+        if (event.candidate) {
+          const callDoc = await getDoc(callDocRef);
+          if (callDoc.exists() && callDoc.data().answer) {
+            await addDoc(answerCandidatesRef, event.candidate.toJSON());
+          } else {
+            await addDoc(offerCandidatesRef, event.candidate.toJSON());
+          }
+        }
+      };
+      
+      const callDocSnap = await getDoc(callDocRef);
+
+      if (!callDocSnap.exists()) {
+        const offerDescription = await pc.createOffer();
+        await pc.setLocalDescription(offerDescription);
+        const offer = { sdp: offerDescription.sdp, type: offerDescription.type };
+        await setDoc(callDocRef, { offer });
+
+        const unsubAnswer = onSnapshot(callDocRef, (snapshot) => {
+          const data = snapshot.data();
+          if (!pc.currentRemoteDescription && data?.answer) {
+            const answerDescription = new RTCSessionDescription(data.answer);
+            pc.setRemoteDescription(answerDescription);
+          }
+        });
+        unsubscribers.push(unsubAnswer);
+
+        const unsubAnswerCandidates = onSnapshot(answerCandidatesRef, (snapshot) => {
+          snapshot.docChanges().forEach((change) => {
+            if (change.type === 'added') {
+              pc.addIceCandidate(new RTCIceCandidate(change.doc.data()));
+            }
+          });
+        });
+        unsubscribers.push(unsubAnswerCandidates);
+
+      } else {
+        const offer = callDocSnap.data().offer;
+        await pc.setRemoteDescription(new RTCSessionDescription(offer));
+        
+        const answerDescription = await pc.createAnswer();
+        await pc.setLocalDescription(answerDescription);
+        
+        const answer = { type: answerDescription.type, sdp: answerDescription.sdp };
+        await updateDoc(callDocRef, { answer });
+        
+        const unsubOfferCandidates = onSnapshot(offerCandidatesRef, (snapshot) => {
+          snapshot.docChanges().forEach((change) => {
+            if (change.type === 'added') {
+              pc.addIceCandidate(new RTCIceCandidate(change.doc.data()));
+            }
+          });
+        });
+        unsubscribers.push(unsubOfferCandidates);
+      }
+    };
+
+    setupCall();
+
+    // --- Cleanup function for this useEffect ---
     return () => {
-        unsubscribers.forEach(unsub => unsub && unsub());
-        cleanupCall();
-    };
-  }, [isCallActive, chatId, cleanupCall]);
+      // Stop all stream tracks
+      if (streamRef.current) {
+        streamRef.current.getTracks().forEach(track => track.stop());
+        streamRef.current = null;
+      }
 
+      // Close peer connection
+      if (peerConnectionRef.current) {
+        peerConnectionRef.current.close();
+        peerConnectionRef.current = null;
+      }
+
+      // Unsubscribe from all Firestore listeners
+      unsubscribers.forEach(unsub => unsub && unsub());
+
+      // Clean up UI state
+      if (localVideoRef.current) localVideoRef.current.srcObject = null;
+      if (remoteVideoRef.current) remoteVideoRef.current.srcObject = null;
+      setRemoteStream(null);
+
+      // Clean up Firestore signaling documents
+      const cleanupFirestore = async (id: string) => {
+        try {
+          const callDocRef = doc(firestore, 'video_calls', id);
+          const offerCandidatesRef = collection(callDocRef, 'offerCandidates');
+          const answerCandidatesRef = collection(callDocRef, 'answerCandidates');
+          
+          const [offerCandidatesSnap, answerCandidatesSnap] = await Promise.all([
+            getDocs(offerCandidatesRef),
+            getDocs(answerCandidatesRef)
+          ]);
+          
+          const deletePromises: Promise<void>[] = [];
+          offerCandidatesSnap.forEach(doc => deletePromises.push(deleteDoc(doc.ref)));
+          answerCandidatesSnap.forEach(doc => deletePromises.push(deleteDoc(doc.ref)));
+          await Promise.all(deletePromises);
+
+          await deleteDoc(callDocRef);
+        } catch (error) {
+          console.error("Error cleaning up call documents:", error);
+        }
+      };
+      if (chatId) {
+        cleanupFirestore(chatId);
+      }
+    };
+  }, [isCallActive, chatId, currentFacingMode, isMicMuted, isCameraOff, toast, handleEndCall]);
 
 
   const toggleMic = () => {
