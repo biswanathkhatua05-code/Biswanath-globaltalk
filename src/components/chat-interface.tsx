@@ -1,7 +1,7 @@
 
 "use client";
 import type { Message, User, ChatMode } from '@/lib/types';
-import React, { useState, useRef, useEffect, useCallback } from 'react';
+import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { ScrollArea } from '@/components/ui/scroll-area';
@@ -15,7 +15,7 @@ import { UserAvatar } from '@/components/user-avatar';
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { cn } from '@/lib/utils';
 import { firestore } from '@/lib/firebase'; // Import firestore
-import { collection, addDoc, serverTimestamp, query, orderBy, onSnapshot, Timestamp, where, limit, doc, setDoc, getDoc, updateDoc, arrayUnion } from 'firebase/firestore'; // Firestore imports
+import { collection, addDoc, serverTimestamp, query, orderBy, onSnapshot, Timestamp, where, limit, doc, setDoc, getDoc, updateDoc, arrayUnion, deleteDoc, getDocs } from 'firebase/firestore'; // Firestore imports
 
 interface ChatInterfaceProps {
   chatId: string; 
@@ -25,6 +25,17 @@ interface ChatInterfaceProps {
   onDisconnect?: () => void;
   partner?: User; 
 }
+
+// STUN servers configuration for WebRTC
+const servers = {
+  iceServers: [
+    {
+      urls: ['stun:stun1.l.google.com:19302', 'stun:stun2.l.google.com:19302'],
+    },
+  ],
+  iceCandidatePoolSize: 10,
+};
+
 
 export function ChatInterface({
   chatId,
@@ -41,13 +52,16 @@ export function ChatInterface({
   const { toast } = useToast();
   const scrollAreaRef = useRef<HTMLDivElement>(null);
 
+  // States and Refs for Video Calling
   const [showVideoCall, setShowVideoCall] = useState(false);
   const [isCallActive, setIsCallActive] = useState(false);
   const [hasCameraPermission, setHasCameraPermission] = useState<boolean | null>(null);
   const [isPiPSupported, setIsPiPSupported] = useState(false);
-  const videoRef = useRef<HTMLVideoElement>(null);
+  const localVideoRef = useRef<HTMLVideoElement>(null); // Renamed from videoRef
+  const remoteVideoRef = useRef<HTMLVideoElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
-
+  const peerConnectionRef = useRef<RTCPeerConnection | null>(null);
+  const [remoteStream, setRemoteStream] = useState<MediaStream | null>(null);
   const [isMicMuted, setIsMicMuted] = useState(false);
   const [isCameraOff, setIsCameraOff] = useState(false);
   const [currentFacingMode, setCurrentFacingMode] = useState<'user' | 'environment'>('user');
@@ -71,7 +85,6 @@ export function ChatInterface({
       case 'global':
         return 'global_messages';
       case 'random':
-        return `random_chat_sessions_pool/${chatId}/messages`;
       case 'private':
         return `chat_sessions/${chatId}/messages`;
       default:
@@ -190,15 +203,58 @@ export function ChatInterface({
       streamRef.current.getTracks().forEach(track => track.stop());
       streamRef.current = null;
     }
-    if (videoRef.current) {
-      videoRef.current.srcObject = null;
+    if (localVideoRef.current) {
+      localVideoRef.current.srcObject = null;
+    }
+    if (remoteVideoRef.current) {
+        remoteVideoRef.current.srcObject = null;
     }
   }, []);
 
-  const handleEnterPiP = useCallback(async () => {
-    if (videoRef.current && document.pictureInPictureEnabled && !document.pictureInPictureElement) {
+  const cleanupCall = useCallback(async () => {
+    // Close peer connection
+    if (peerConnectionRef.current) {
+        peerConnectionRef.current.close();
+        peerConnectionRef.current = null;
+    }
+
+    // Clean up Firestore signaling documents
+    if (chatId) {
         try {
-            await videoRef.current.requestPictureInPicture();
+            const callDocRef = doc(firestore, 'video_calls', chatId);
+            const offerCandidatesRef = collection(callDocRef, 'offerCandidates');
+            const answerCandidatesRef = collection(callDocRef, 'answerCandidates');
+            
+            const [offerCandidatesSnap, answerCandidatesSnap] = await Promise.all([
+                getDocs(offerCandidatesRef),
+                getDocs(answerCandidatesRef)
+            ]);
+            
+            const deletePromises: Promise<void>[] = [];
+            offerCandidatesSnap.forEach(doc => deletePromises.push(deleteDoc(doc.ref)));
+            answerCandidatesSnap.forEach(doc => deletePromises.push(deleteDoc(doc.ref)));
+            await Promise.all(deletePromises);
+
+            await deleteDoc(callDocRef);
+        } catch (error) {
+            console.error("Error cleaning up call documents:", error);
+        }
+    }
+  }, [chatId]);
+
+  const handleEndCall = useCallback(() => {
+    setIsCallActive(false);
+    setShowVideoCall(false);
+    setRemoteStream(null);
+    stopMediaStream();
+    cleanupCall();
+  }, [stopMediaStream, cleanupCall]);
+
+
+  const handleEnterPiP = useCallback(async () => {
+    if (localVideoRef.current && document.pictureInPictureEnabled && !document.pictureInPictureElement) {
+        try {
+            await localVideoRef.current.requestPictureInPicture();
             setShowVideoCall(false); // Hide the main video UI. Call remains active.
         } catch(error) {
             toast({
@@ -211,11 +267,6 @@ export function ChatInterface({
     }
   }, [toast]);
 
-  const handleEndCall = useCallback(() => {
-    setIsCallActive(false);
-    setShowVideoCall(false);
-    // The main useEffect will now trigger stopMediaStream
-  }, []);
 
   const handleHeaderVideoClick = useCallback(() => {
     if (!isCallActive) {
@@ -224,8 +275,6 @@ export function ChatInterface({
       return;
     }
     
-    // If the call is active, just toggle the UI visibility.
-    // If we're showing the UI and PiP is active, we should exit PiP.
     if (!showVideoCall && document.pictureInPictureElement) {
         document.exitPictureInPicture();
     }
@@ -235,7 +284,7 @@ export function ChatInterface({
 
   useEffect(() => {
     const getMediaStream = async (facingMode: 'user' | 'environment') => {
-      if (typeof window !== 'undefined' && navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
+      if (typeof window !== 'undefined' && navigator.mediaDevices?.getUserMedia) {
         setHasCameraPermission(null); 
         try {
           if (streamRef.current) {
@@ -245,8 +294,8 @@ export function ChatInterface({
           const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode }, audio: true });
           streamRef.current = stream;
           setHasCameraPermission(true);
-          if (videoRef.current) {
-            videoRef.current.srcObject = stream;
+          if (localVideoRef.current) {
+            localVideoRef.current.srcObject = stream;
           }
           
           stream.getAudioTracks().forEach(track => track.enabled = !isMicMuted);
@@ -264,11 +313,7 @@ export function ChatInterface({
         }
       } else {
         setHasCameraPermission(false);
-        toast({
-          variant: 'destructive',
-          title: 'Media Not Supported',
-          description: 'Your browser does not support camera/microphone access.',
-        });
+        toast({ variant: 'destructive', title: 'Media Not Supported', description: 'Your browser does not support camera/microphone access.' });
         handleEndCall();
       }
     };
@@ -285,23 +330,124 @@ export function ChatInterface({
   }, [isCallActive, currentFacingMode, toast, stopMediaStream, isMicMuted, isCameraOff, handleEndCall]);
 
 
+  // Effect for WebRTC Signaling and Connection
+  useEffect(() => {
+    if (!isCallActive || !streamRef.current || !chatId) {
+        return;
+    }
+
+    let unsubscribers: (() => void)[] = [];
+    const pc = new RTCPeerConnection(servers);
+    peerConnectionRef.current = pc;
+
+    // Push local tracks to the connection
+    streamRef.current.getTracks().forEach(track => {
+        pc.addTrack(track, streamRef.current!);
+    });
+
+    // Handle remote stream
+    const remoteS = new MediaStream();
+    setRemoteStream(remoteS);
+    if(remoteVideoRef.current) remoteVideoRef.current.srcObject = remoteS;
+    
+    pc.ontrack = (event) => {
+        event.streams[0].getTracks().forEach(track => {
+            remoteS.addTrack(track);
+        });
+    };
+
+    const callDocRef = doc(firestore, 'video_calls', chatId);
+    const offerCandidatesRef = collection(callDocRef, 'offerCandidates');
+    const answerCandidatesRef = collection(callDocRef, 'answerCandidates');
+
+    // Exchange ICE candidates
+    pc.onicecandidate = async (event) => {
+        if (event.candidate) {
+            const callDoc = await getDoc(callDocRef);
+            if(callDoc.exists() && callDoc.data().answer) {
+                 await addDoc(answerCandidatesRef, event.candidate.toJSON());
+            } else {
+                 await addDoc(offerCandidatesRef, event.candidate.toJSON());
+            }
+        }
+    };
+
+    const setupCall = async () => {
+        const callDocSnap = await getDoc(callDocRef);
+
+        if (!callDocSnap.exists()) {
+            // Caller: create offer
+            const offerDescription = await pc.createOffer();
+            await pc.setLocalDescription(offerDescription);
+            const offer = { sdp: offerDescription.sdp, type: offerDescription.type };
+            await setDoc(callDocRef, { offer });
+
+            const unsubAnswer = onSnapshot(callDocRef, (snapshot) => {
+                const data = snapshot.data();
+                if (!pc.currentRemoteDescription && data?.answer) {
+                    const answerDescription = new RTCSessionDescription(data.answer);
+                    pc.setRemoteDescription(answerDescription);
+                }
+            });
+            unsubscribers.push(unsubAnswer);
+
+            const unsubAnswerCandidates = onSnapshot(answerCandidatesRef, (snapshot) => {
+                snapshot.docChanges().forEach((change) => {
+                    if (change.type === 'added') {
+                        pc.addIceCandidate(new RTCIceCandidate(change.doc.data()));
+                    }
+                });
+            });
+            unsubscribers.push(unsubAnswerCandidates);
+
+        } else {
+            // Callee: create answer
+            const offer = callDocSnap.data().offer;
+            await pc.setRemoteDescription(new RTCSessionDescription(offer));
+            
+            const answerDescription = await pc.createAnswer();
+            await pc.setLocalDescription(answerDescription);
+            
+            const answer = { type: answerDescription.type, sdp: answerDescription.sdp };
+            await updateDoc(callDocRef, { answer });
+            
+            const unsubOfferCandidates = onSnapshot(offerCandidatesRef, (snapshot) => {
+                snapshot.docChanges().forEach((change) => {
+                    if (change.type === 'added') {
+                       pc.addIceCandidate(new RTCIceCandidate(change.doc.data()));
+                    }
+                });
+            });
+            unsubscribers.push(unsubOfferCandidates);
+        }
+    };
+    
+    setupCall().catch(e => console.error("Error setting up call:", e));
+
+    // Cleanup function for this effect
+    return () => {
+        unsubscribers.forEach(unsub => unsub && unsub());
+        cleanupCall();
+    };
+  }, [isCallActive, chatId, cleanupCall]);
+
+
+
   const toggleMic = () => {
     if (streamRef.current) {
-      const audioTracks = streamRef.current.getAudioTracks();
-      if (audioTracks.length > 0) {
-        audioTracks[0].enabled = !audioTracks[0].enabled;
-        setIsMicMuted(!audioTracks[0].enabled);
-      }
+      streamRef.current.getAudioTracks().forEach(track => {
+        track.enabled = !track.enabled;
+        setIsMicMuted(!track.enabled);
+      });
     }
   };
 
   const toggleCamera = () => {
-    if (streamRef.current) {
-      const videoTracks = streamRef.current.getVideoTracks();
-      if (videoTracks.length > 0) {
-        videoTracks[0].enabled = !videoTracks[0].enabled;
-        setIsCameraOff(!videoTracks[0].enabled);
-      }
+     if (streamRef.current) {
+      streamRef.current.getVideoTracks().forEach(track => {
+        track.enabled = !track.enabled;
+        setIsCameraOff(!track.enabled);
+      });
     }
   };
 
@@ -419,7 +565,7 @@ export function ChatInterface({
                     </Button>
                   </TooltipTrigger>
                   <TooltipContent>
-                    <p>Voice Call - Rs. 20/month (Subscription Required)</p>
+                    <p>Voice Call (Coming Soon)</p>
                   </TooltipContent>
                 </Tooltip>
               </TooltipProvider>
@@ -442,18 +588,27 @@ export function ChatInterface({
 
       {showVideoCall ? (
         <div className="flex-1 p-0 flex flex-col bg-black relative overflow-hidden">
-          {/* Remote User's Video (Placeholder) */}
-          <div className="w-full h-full flex flex-col items-center justify-center bg-neutral-900 text-neutral-600">
-            <UserCircle className="w-24 h-24" />
-            <p className="mt-4 text-lg">Video feed of {partner?.name || 'your partner'}</p>
-            <p className="text-sm text-neutral-700">(This is a placeholder for the real video call)</p>
-          </div>
+          {/* Remote User's Video */}
+          <video 
+            ref={remoteVideoRef}
+            className="w-full h-full object-cover bg-neutral-900"
+            autoPlay
+            playsInline
+          />
+          {(!remoteStream || remoteStream.getTracks().length === 0) && (
+            <div className="absolute inset-0 flex flex-col items-center justify-center bg-neutral-900 text-neutral-600 pointer-events-none">
+                <UserCircle className="w-24 h-24" />
+                <p className="mt-4 text-lg">Connecting to {partner?.name || 'your partner'}...</p>
+                <p className="text-sm text-neutral-700">(Waiting for user to join)</p>
+            </div>
+          )}
+
 
           {/* Local User's Video (Your camera) */}
           {hasCameraPermission === true && (
             <div className="absolute top-4 right-4 w-40 md:w-48 rounded-lg overflow-hidden z-20 shadow-lg border-2 border-white/20 transition-all duration-300">
               <video 
-                ref={videoRef} 
+                ref={localVideoRef} 
                 className={cn(
                   "w-full h-full object-cover aspect-[3/4]",
                   currentFacingMode === 'user' && "scale-x-[-1]" 
@@ -465,7 +620,6 @@ export function ChatInterface({
             </div>
           )}
           
-          {/* Alerts for permission status */}
           {hasCameraPermission === false && (
             <Alert variant="destructive" className="absolute top-4 left-1/2 -translate-x-1/2 w-auto max-w-md z-50">
               <AlertCircle className="h-4 w-4" />
@@ -618,5 +772,3 @@ export function ChatInterface({
     </div>
   );
 }
-
-    
