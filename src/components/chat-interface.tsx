@@ -6,7 +6,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { MessageBubble } from './message-bubble';
-import { Send, Paperclip, Mic, Video, Phone, AlertCircle, LogOut, Bot, VideoOff, XCircle, Loader2, StopCircle, MicOff, SwitchCamera, Minus } from 'lucide-react';
+import { Send, Paperclip, Mic, Video, Phone, AlertCircle, LogOut, Bot, VideoOff, XCircle, Loader2, StopCircle, MicOff, SwitchCamera, Minus, UserCircle } from 'lucide-react';
 import { useAuth } from '@/context/auth-context';
 import { useChatModeration } from '@/hooks/use-chat-moderation';
 import { useToast } from '@/hooks/use-toast';
@@ -441,86 +441,98 @@ export function ChatInterface({
       </header>
 
       {showVideoCall ? (
-        <div className="flex-1 p-4 flex flex-col items-center justify-center bg-black relative overflow-hidden">
-          <video 
-            ref={videoRef} 
-            className={cn(
-              "w-full h-full object-contain",
-              currentFacingMode === 'user' && "scale-x-[-1]" 
-            )} 
-            autoPlay 
-            muted 
-            playsInline 
-          />
+        <div className="flex-1 p-0 flex flex-col bg-black relative overflow-hidden">
+          {/* Remote User's Video (Placeholder) */}
+          <div className="w-full h-full flex flex-col items-center justify-center bg-neutral-900 text-neutral-600">
+            <UserCircle className="w-24 h-24" />
+            <p className="mt-4 text-lg">Video feed of {partner?.name || 'your partner'}</p>
+            <p className="text-sm text-neutral-700">(This is a placeholder for the real video call)</p>
+          </div>
+
+          {/* Local User's Video (Your camera) */}
+          {hasCameraPermission === true && (
+            <div className="absolute top-4 right-4 w-40 md:w-48 rounded-lg overflow-hidden z-20 shadow-lg border-2 border-white/20 transition-all duration-300">
+              <video 
+                ref={videoRef} 
+                className={cn(
+                  "w-full h-full object-cover aspect-[3/4]",
+                  currentFacingMode === 'user' && "scale-x-[-1]" 
+                )} 
+                autoPlay 
+                muted 
+                playsInline 
+              />
+            </div>
+          )}
           
+          {/* Alerts for permission status */}
           {hasCameraPermission === false && (
-            <Alert variant="destructive" className="absolute top-4 left-1/2 -translate-x-1/2 w-auto max-w-md z-20">
+            <Alert variant="destructive" className="absolute top-4 left-1/2 -translate-x-1/2 w-auto max-w-md z-50">
               <AlertCircle className="h-4 w-4" />
               <AlertTitle>Media Access Denied</AlertTitle>
               <AlertDescription>
-                Could not access camera/microphone. Please enable permissions and refresh.
+                Could not access camera/microphone. Please enable permissions.
               </AlertDescription>
             </Alert>
           )}
           {hasCameraPermission === null && (
-             <div className="absolute inset-0 flex items-center justify-center bg-black bg-opacity-50 z-10">
+             <div className="absolute inset-0 flex items-center justify-center bg-black bg-opacity-50 z-40">
                 <Loader2 className="h-8 w-8 animate-spin text-white" />
                 <p className="ml-2 text-white">Requesting media access...</p>
              </div>
           )}
 
-          {hasCameraPermission === true && (
-            <div className="absolute bottom-6 left-1/2 -translate-x-1/2 z-20 flex items-center gap-2 p-2 bg-black/75 rounded-full shadow-lg">
-              <TooltipProvider>
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <Button onClick={toggleMic} size="icon" className="bg-neutral-700/50 hover:bg-neutral-600/70 text-white rounded-full p-3">
-                      {isMicMuted ? <MicOff className="h-5 w-5" /> : <Mic className="h-5 w-5" />}
-                    </Button>
-                  </TooltipTrigger>
-                  <TooltipContent><p>{isMicMuted ? "Unmute Microphone" : "Mute Microphone"}</p></TooltipContent>
-                </Tooltip>
+          {/* Controls Bar */}
+          <div className="absolute bottom-6 left-1/2 -translate-x-1/2 z-30 flex items-center gap-2 p-2 bg-black/75 rounded-full shadow-lg">
+            <TooltipProvider>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button onClick={toggleMic} size="icon" className="bg-neutral-700/50 hover:bg-neutral-600/70 text-white rounded-full p-3" disabled={!hasCameraPermission}>
+                    {isMicMuted ? <MicOff className="h-5 w-5" /> : <Mic className="h-5 w-5" />}
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent><p>{isMicMuted ? "Unmute Microphone" : "Mute Microphone"}</p></TooltipContent>
+              </Tooltip>
 
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <Button onClick={toggleCamera} size="icon" className="bg-neutral-700/50 hover:bg-neutral-600/70 text-white rounded-full p-3">
-                      {isCameraOff ? <VideoOff className="h-5 w-5" /> : <Video className="h-5 w-5" />}
-                    </Button>
-                  </TooltipTrigger>
-                  <TooltipContent><p>{isCameraOff ? "Turn Camera On" : "Turn Camera Off"}</p></TooltipContent>
-                </Tooltip>
-                
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <Button onClick={handleSwitchCamera} size="icon" className="bg-neutral-700/50 hover:bg-neutral-600/70 text-white rounded-full p-3">
-                      <SwitchCamera className="h-5 w-5" />
-                    </Button>
-                  </TooltipTrigger>
-                  <TooltipContent><p>Switch Camera</p></TooltipContent>
-                </Tooltip>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button onClick={toggleCamera} size="icon" className="bg-neutral-700/50 hover:bg-neutral-600/70 text-white rounded-full p-3" disabled={!hasCameraPermission}>
+                    {isCameraOff ? <VideoOff className="h-5 w-5" /> : <Video className="h-5 w-5" />}
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent><p>{isCameraOff ? "Turn Camera On" : "Turn Camera Off"}</p></TooltipContent>
+              </Tooltip>
+              
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button onClick={handleSwitchCamera} size="icon" className="bg-neutral-700/50 hover:bg-neutral-600/70 text-white rounded-full p-3" disabled={!hasCameraPermission}>
+                    <SwitchCamera className="h-5 w-5" />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent><p>Switch Camera</p></TooltipContent>
+              </Tooltip>
 
-                {isPiPSupported && (
-                  <Tooltip>
-                    <TooltipTrigger asChild>
-                      <Button onClick={handleEnterPiP} size="icon" className="bg-neutral-700/50 hover:bg-neutral-600/70 text-white rounded-full p-3">
-                        <Minus className="h-5 w-5" />
-                      </Button>
-                    </TooltipTrigger>
-                    <TooltipContent><p>Picture-in-Picture</p></TooltipContent>
-                  </Tooltip>
-                )}
-
+              {isPiPSupported && (
                 <Tooltip>
                   <TooltipTrigger asChild>
-                    <Button onClick={handleEndCall} size="icon" className="bg-red-500 hover:bg-red-600 text-white rounded-full p-3">
-                      <XCircle className="h-5 w-5" />
+                    <Button onClick={handleEnterPiP} size="icon" className="bg-neutral-700/50 hover:bg-neutral-600/70 text-white rounded-full p-3" disabled={!hasCameraPermission}>
+                      <Minus className="h-5 w-5" />
                     </Button>
                   </TooltipTrigger>
-                  <TooltipContent><p>End Call</p></TooltipContent>
+                  <TooltipContent><p>Picture-in-Picture</p></TooltipContent>
                 </Tooltip>
-              </TooltipProvider>
-            </div>
-          )}
+              )}
+
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button onClick={handleEndCall} size="icon" className="bg-red-500 hover:bg-red-600 text-white rounded-full p-3">
+                    <XCircle className="h-5 w-5" />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent><p>End Call</p></TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
+          </div>
         </div>
       ) : (
         <ScrollArea className="flex-1 p-4" ref={scrollAreaRef}>
@@ -606,3 +618,5 @@ export function ChatInterface({
     </div>
   );
 }
+
+    
