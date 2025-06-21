@@ -6,7 +6,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { MessageBubble } from './message-bubble';
-import { Send, Paperclip, Mic, Video, Phone, AlertCircle, LogOut, Bot, VideoOff, XCircle, Loader2, StopCircle, MicOff, SwitchCamera } from 'lucide-react';
+import { Send, Paperclip, Mic, Video, Phone, AlertCircle, LogOut, Bot, VideoOff, XCircle, Loader2, StopCircle, MicOff, SwitchCamera, Minus } from 'lucide-react';
 import { useAuth } from '@/context/auth-context';
 import { useChatModeration } from '@/hooks/use-chat-moderation';
 import { useToast } from '@/hooks/use-toast';
@@ -21,8 +21,6 @@ interface ChatInterfaceProps {
   chatId: string; 
   chatMode: ChatMode;
   chatTitle?: string;
-  // initialMessages removed as messages will come from Firestore
-  // onSendMessage removed as it will be handled internally
   showDisconnectButton?: boolean;
   onDisconnect?: () => void;
   partner?: User; 
@@ -44,7 +42,9 @@ export function ChatInterface({
   const scrollAreaRef = useRef<HTMLDivElement>(null);
 
   const [showVideoCall, setShowVideoCall] = useState(false);
+  const [isCallActive, setIsCallActive] = useState(false);
   const [hasCameraPermission, setHasCameraPermission] = useState<boolean | null>(null);
+  const [isPiPSupported, setIsPiPSupported] = useState(false);
   const videoRef = useRef<HTMLVideoElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
 
@@ -59,7 +59,12 @@ export function ChatInterface({
 
   const currentUser: User | undefined = firebaseUser ? { id: firebaseUser.uid, name: firebaseUser.displayName || 'You', avatarUrl: firebaseUser.photoURL || undefined } : undefined;
 
-  // Firestore collection path based on chatMode
+  useEffect(() => {
+    if (typeof window !== "undefined" && 'pictureInPictureEnabled' in document) {
+        setIsPiPSupported(document.pictureInPictureEnabled);
+    }
+  }, []);
+
   const getMessagesCollectionPath = useCallback(() => {
     if (!chatId) return null;
     switch (chatMode) {
@@ -77,7 +82,7 @@ export function ChatInterface({
 
 
   useEffect(() => {
-    if (!isLoggedIn) return;
+    if (!isLoggedIn || !chatId) return;
     
     const messagesCollectionPath = getMessagesCollectionPath();
     if (!messagesCollectionPath) return;
@@ -91,11 +96,11 @@ export function ChatInterface({
         fetchedMessages.push({
           id: doc.id,
           text: data.text,
-          timestamp: data.timestamp, // Firestore Timestamp
-          user: data.user, // Assuming user object is stored
+          timestamp: data.timestamp,
+          user: data.user,
           userId: data.userId,
           isSender: data.userId === userId,
-          status: 'sent', // Assume sent if from Firestore
+          status: 'sent',
           voiceNoteUrl: data.voiceNoteUrl,
           fileName: data.fileName,
         });
@@ -111,7 +116,7 @@ export function ChatInterface({
     });
 
     return () => unsubscribe();
-  }, [isLoggedIn, userId, toast, getMessagesCollectionPath]);
+  }, [isLoggedIn, userId, toast, getMessagesCollectionPath, chatId]);
 
 
   useEffect(() => {
@@ -142,39 +147,24 @@ export function ChatInterface({
       return;
     }
 
-    // Optimistic update (optional, but good for UX)
-    const tempMessageId = `temp_${Date.now()}`;
-    const optimisticMessage: Message = {
-      id: tempMessageId,
-      text: messageText,
-      timestamp: Timestamp.now(), // Use Firestore Timestamp for optimistic as well
-      user: currentUser,
-      userId: currentUser.id,
-      isSender: true,
-      status: 'sending',
-      ...(voiceNoteDetails && { voiceNoteUrl: voiceNoteDetails.voiceNoteUrl, fileName: voiceNoteDetails.fileName }),
-    };
-    // setMessages(prev => [...prev, optimisticMessage]); // Firestore listener will handle this
-
     try {
-      if (!voiceNoteDetails) { // Only moderate text messages
+      if (!voiceNoteDetails) { 
         const moderationResult = await checkMessage({ message: messageText, userUid: currentUser.id });
         if (!moderationResult.isSafe) {
-          // setMessages(prev => prev.map(m => m.id === tempMessageId ? { ...m, status: 'moderated', moderationReason: moderationResult.reason || 'Content policy violation' } : m));
           toast({
             title: "Message Moderated",
             description: moderationResult.reason || "Your message violates our content policy and was not sent.",
             variant: "destructive",
             duration: 5000,
           });
-          return; // Do not send moderated message
+          return; 
         }
       }
 
       const messageData: Omit<Message, 'id' | 'isSender' | 'status'> = {
         text: messageText,
-        timestamp: serverTimestamp(), // Use server timestamp for actual storage
-        user: { // Store a simplified user object or just userId
+        timestamp: serverTimestamp(),
+        user: {
           id: currentUser.id,
           name: currentUser.name || "Anonymous",
           avatarUrl: currentUser.avatarUrl || `https://placehold.co/100x100/78909C/FFFFFF?text=${(currentUser.name || 'A').charAt(0).toUpperCase()}`,
@@ -184,11 +174,8 @@ export function ChatInterface({
       };
 
       await addDoc(collection(firestore, messagesCollectionPath), messageData);
-      // Firestore listener will update the messages list, so manual update to 'sent' is not strictly needed here
-      // setMessages(prev => prev.map(m => m.id === tempMessageId ? { ...m, status: 'sent' } : m));
     } catch (error) {
       console.error("Error sending message to Firestore:", error);
-      // setMessages(prev => prev.map(m => m.id === tempMessageId ? { ...m, status: 'failed' } : m));
       toast({
         title: "Message Failed",
         description: "Could not send your message. Please try again.",
@@ -208,19 +195,43 @@ export function ChatInterface({
     }
   }, []);
 
-  const handleVideoCallClick = useCallback(() => {
-    setShowVideoCall(prev => {
-      const newShowVideoCallState = !prev;
-      if (!newShowVideoCallState) { 
-        stopMediaStream();
-        setHasCameraPermission(null);
-        setIsMicMuted(false);
-        setIsCameraOff(false);
-        setCurrentFacingMode('user'); 
-      }
-      return newShowVideoCallState;
-    });
-  }, [stopMediaStream]);
+  const handleEnterPiP = useCallback(async () => {
+    if (videoRef.current && document.pictureInPictureEnabled && !document.pictureInPictureElement) {
+        try {
+            await videoRef.current.requestPictureInPicture();
+            setShowVideoCall(false); // Hide the main video UI. Call remains active.
+        } catch(error) {
+            toast({
+                variant: 'destructive',
+                title: 'PiP Error',
+                description: 'Could not enter Picture-in-Picture mode.',
+            });
+            console.error("Error entering PiP mode:", error);
+        }
+    }
+  }, [toast]);
+
+  const handleEndCall = useCallback(() => {
+    setIsCallActive(false);
+    setShowVideoCall(false);
+    // The main useEffect will now trigger stopMediaStream
+  }, []);
+
+  const handleHeaderVideoClick = useCallback(() => {
+    if (!isCallActive) {
+      setIsCallActive(true);
+      setShowVideoCall(true);
+      return;
+    }
+    
+    // If the call is active, just toggle the UI visibility.
+    // If we're showing the UI and PiP is active, we should exit PiP.
+    if (!showVideoCall && document.pictureInPictureElement) {
+        document.exitPictureInPicture();
+    }
+    setShowVideoCall(prev => !prev);
+  }, [isCallActive, showVideoCall]);
+
 
   useEffect(() => {
     const getMediaStream = async (facingMode: 'user' | 'environment') => {
@@ -247,22 +258,22 @@ export function ChatInterface({
           toast({
             variant: 'destructive',
             title: 'Media Access Denied',
-            description: 'Could not access the requested camera/microphone. Please check permissions or try a different camera.',
+            description: 'Could not access the requested camera/microphone. Please check permissions.',
           });
-          stopMediaStream(); 
+          handleEndCall();
         }
       } else {
         setHasCameraPermission(false);
         toast({
           variant: 'destructive',
           title: 'Media Not Supported',
-          description: 'Your browser does not support camera/microphone access or you are in an insecure context.',
+          description: 'Your browser does not support camera/microphone access.',
         });
-        setShowVideoCall(false);
+        handleEndCall();
       }
     };
 
-    if (showVideoCall) {
+    if (isCallActive) {
       getMediaStream(currentFacingMode);
     } else {
       stopMediaStream();
@@ -271,7 +282,7 @@ export function ChatInterface({
     return () => {
       stopMediaStream();
     };
-  }, [showVideoCall, currentFacingMode, toast, stopMediaStream, isMicMuted, isCameraOff]); 
+  }, [isCallActive, currentFacingMode, toast, stopMediaStream, isMicMuted, isCameraOff, handleEndCall]);
 
 
   const toggleMic = () => {
@@ -323,15 +334,11 @@ export function ChatInterface({
   
       mediaRecorderRef.current.onstop = async () => {
         const audioBlob = new Blob(audioChunksRef.current, { type: 'audio/webm' });
-        const audioUrl = URL.createObjectURL(audioBlob); // This URL is temporary and client-side
+        const audioUrl = URL.createObjectURL(audioBlob);
         
-        // For Firestore, you'd typically upload the Blob to Firebase Storage 
-        // and then save the storage URL in Firestore.
-        // For now, we'll just send the placeholder or skip true storage of voice note for simplicity in this step.
-        // Let's send the temporary client-side URL.
         await handleSendMessage("", { voiceNoteUrl: audioUrl, fileName: `Voice Note ${new Date().toLocaleTimeString()}.webm` });
         
-        stream.getTracks().forEach(track => track.stop()); // Stop microphone stream after recording
+        stream.getTracks().forEach(track => track.stop());
       };
   
       mediaRecorderRef.current.start();
@@ -391,15 +398,15 @@ export function ChatInterface({
                     <Button
                       variant="ghost"
                       size="icon"
-                      onClick={handleVideoCallClick}
-                      className={cn("text-muted-foreground hover:text-primary", showVideoCall && "text-primary bg-accent")}
+                      onClick={handleHeaderVideoClick}
+                      className={cn("text-muted-foreground hover:text-primary", isCallActive && "text-primary")}
                       disabled={isRecording || micPermissionStatus === 'pending'}
                     >
                       {showVideoCall ? <VideoOff className="h-5 w-5" /> : <Video className="h-5 w-5" />}
                     </Button>
                   </TooltipTrigger>
                   <TooltipContent>
-                    <p>{showVideoCall ? "Hide Video Feed" : "Show Video Feed"}</p>
+                    <p>{showVideoCall ? "Hide Video Feed" : isCallActive ? "Show Video Feed" : "Start Video Call"}</p>
                   </TooltipContent>
                 </Tooltip>
               </TooltipProvider>
@@ -463,11 +470,11 @@ export function ChatInterface({
           )}
 
           {hasCameraPermission === true && (
-            <div className="absolute bottom-6 left-1/2 -translate-x-1/2 z-20 flex items-center gap-3 p-2 bg-black/75 rounded-full shadow-lg">
+            <div className="absolute bottom-6 left-1/2 -translate-x-1/2 z-20 flex items-center gap-2 p-2 bg-black/75 rounded-full shadow-lg">
               <TooltipProvider>
                 <Tooltip>
                   <TooltipTrigger asChild>
-                    <Button onClick={toggleMic} size="icon" className="bg-neutral-700/50 hover:bg-neutral-600/70 text-white rounded-full p-2">
+                    <Button onClick={toggleMic} size="icon" className="bg-neutral-700/50 hover:bg-neutral-600/70 text-white rounded-full p-3">
                       {isMicMuted ? <MicOff className="h-5 w-5" /> : <Mic className="h-5 w-5" />}
                     </Button>
                   </TooltipTrigger>
@@ -476,7 +483,7 @@ export function ChatInterface({
 
                 <Tooltip>
                   <TooltipTrigger asChild>
-                    <Button onClick={toggleCamera} size="icon" className="bg-neutral-700/50 hover:bg-neutral-600/70 text-white rounded-full p-2">
+                    <Button onClick={toggleCamera} size="icon" className="bg-neutral-700/50 hover:bg-neutral-600/70 text-white rounded-full p-3">
                       {isCameraOff ? <VideoOff className="h-5 w-5" /> : <Video className="h-5 w-5" />}
                     </Button>
                   </TooltipTrigger>
@@ -485,16 +492,27 @@ export function ChatInterface({
                 
                 <Tooltip>
                   <TooltipTrigger asChild>
-                    <Button onClick={handleSwitchCamera} size="icon" className="bg-neutral-700/50 hover:bg-neutral-600/70 text-white rounded-full p-2">
+                    <Button onClick={handleSwitchCamera} size="icon" className="bg-neutral-700/50 hover:bg-neutral-600/70 text-white rounded-full p-3">
                       <SwitchCamera className="h-5 w-5" />
                     </Button>
                   </TooltipTrigger>
                   <TooltipContent><p>Switch Camera</p></TooltipContent>
                 </Tooltip>
 
+                {isPiPSupported && (
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Button onClick={handleEnterPiP} size="icon" className="bg-neutral-700/50 hover:bg-neutral-600/70 text-white rounded-full p-3">
+                        <Minus className="h-5 w-5" />
+                      </Button>
+                    </TooltipTrigger>
+                    <TooltipContent><p>Picture-in-Picture</p></TooltipContent>
+                  </Tooltip>
+                )}
+
                 <Tooltip>
                   <TooltipTrigger asChild>
-                    <Button onClick={handleVideoCallClick} size="icon" className="bg-red-500 hover:bg-red-600 text-white rounded-full p-2">
+                    <Button onClick={handleEndCall} size="icon" className="bg-red-500 hover:bg-red-600 text-white rounded-full p-3">
                       <XCircle className="h-5 w-5" />
                     </Button>
                   </TooltipTrigger>
@@ -539,7 +557,7 @@ export function ChatInterface({
                   size="icon" 
                   type="button" 
                   onClick={handleMicButtonClick}
-                  disabled={!isLoggedIn || isModerating || showVideoCall || micPermissionStatus === 'pending' || (micPermissionStatus === 'denied' && !isRecording)}
+                  disabled={!isLoggedIn || isModerating || showVideoCall || isRecording || micPermissionStatus === 'pending' || (micPermissionStatus === 'denied' && !isRecording)}
                 >
                   {isRecording ? <StopCircle className="h-5 w-5 text-destructive" /> : <Mic className="h-5 w-5" />}
                 </Button>
