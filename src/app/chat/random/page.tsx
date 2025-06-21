@@ -152,26 +152,26 @@ export default function RandomChatPage() {
           </CardDescription>
         </CardHeader>
         <CardContent>
-          {isSearching ? (
-            <Button disabled className="w-full py-3 text-lg">
-              <Loader2 className="mr-2 h-5 w-5 animate-spin" />
-              Searching for a partner...
-            </Button>
+          {isSearching || (!partner && chatSessionId) ? (
+            <>
+              <Button disabled className="w-full py-3 text-lg">
+                <Loader2 className="mr-2 h-5 w-5 animate-spin" />
+                {isSearching ? 'Searching...' : 'Waiting for Partner...'}
+              </Button>
+              <p className="mt-4 text-sm text-muted-foreground">
+                Connecting you with a random user. This may take a moment.
+              </p>
+            </>
           ) : (
-            <Button onClick={findPartner} className="w-full py-3 text-lg">
-              Find Partner
-            </Button>
+            <>
+              <Button onClick={findPartner} className="w-full py-3 text-lg">
+                Find Partner
+              </Button>
+              <p className="mt-4 text-sm text-muted-foreground">
+                Click "Find Partner" to start a new anonymous chat.
+              </p>
+            </>
           )}
-           {!partner && !isSearching && chatSessionId && (
-             <p className="mt-4 text-sm text-muted-foreground">
-               Waiting for a partner... If this takes too long, you can try finding another partner.
-             </p>
-           )}
-           {!partner && !isSearching && !chatSessionId && (
-             <p className="mt-4 text-sm text-muted-foreground">
-               Click "Find Partner" to start a new anonymous chat.
-             </p>
-           )}
         </CardContent>
       </Card>
     </div>
