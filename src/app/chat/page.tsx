@@ -1,8 +1,9 @@
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import Link from "next/link";
-import { Shuffle, Users, Search } from "lucide-react"; // Removed MessageSquareMore
-import { AppLogo } from "@/components/app-logo"; // Added AppLogo import
+import { Shuffle, Users, Search } from "lucide-react";
+import { AppLogo } from "@/components/app-logo";
+import { APP_NAME } from "@/lib/constants";
 
 export default function ChatDashboardPage() {
   const features = [
@@ -33,7 +34,7 @@ export default function ChatDashboardPage() {
     <div className="container mx-auto py-8">
       <div className="text-center mb-12">
         <AppLogo showText={false} className="mx-auto h-16 w-16 text-primary mb-4" />
-        <h1 className="text-4xl font-bold tracking-tight text-foreground">Welcome to GlobaTalk Lite</h1>
+        <h1 className="text-4xl font-bold tracking-tight text-foreground">Welcome to {APP_NAME}</h1>
         <p className="mt-2 text-lg text-muted-foreground">
           Choose how you want to connect and start chatting.
         </p>

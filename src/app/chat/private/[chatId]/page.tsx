@@ -7,46 +7,31 @@ import { useEffect, useState, useMemo } from 'react';
 import { Loader2, UserCircle, ArrowLeft } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import Link from 'next/link';
-import { useParams } from 'next/navigation';
-import { doc, getDoc } from 'firebase/firestore';
-import { firestore } from '@/lib/firebase';
+import { useParams, useRouter } from 'next/navigation';
+import { UserAvatar } from '@/components/user-avatar';
+import { Card, CardContent, CardHeader } from '@/components/ui/card';
 
 export default function PrivateChatPage() {
   const params = useParams();
+  const router = useRouter();
   const friendUid = params.chatId as string; 
-  const { userId, firebaseUser } = useAuth();
+  const { userId } = useAuth();
   const [isLoading, setIsLoading] = useState(true);
   const [friendUser, setFriendUser] = useState<User | null>(null);
   
-  // Determine the chat room ID consistently
   const chatRoomId = useMemo(() => {
     if (!userId || !friendUid) return null;
-    // Create a consistent ID by sorting UIDs
     return [userId, friendUid].sort().join('_');
   }, [userId, friendUid]);
 
   useEffect(() => {
     if (friendUid && userId) {
       setIsLoading(true);
-      // Simulate fetching friend's details. In a real app, you'd fetch this from a 'users' collection.
-      // For now, we'll just create a placeholder.
-      // If you have a users collection, you would do:
-      // const fetchFriendData = async () => {
-      //   const userDoc = await getDoc(doc(firestore, 'users', friendUid));
-      //   if (userDoc.exists()) {
-      //     setFriendUser({ id: userDoc.id, ...userDoc.data() } as User);
-      //   } else {
-      //     // Handle user not found
-      //     setFriendUser({ id: friendUid, name: `User ${friendUid.substring(0, 5)}...`});
-      //   }
-      //   setIsLoading(false);
-      // };
-      // fetchFriendData();
-
-      // Placeholder friend data:
+      // In a real app, you'd fetch friend's details from a 'users' collection.
+      // For this demo, we create placeholder data.
       const fetchedFriend: User = {
         id: friendUid,
-        name: `User ${friendUid.substring(0, 5)}...`, 
+        name: `User ${friendUid.substring(0, 6)}...`, 
         avatarUrl: `https://placehold.co/100x100/78909C/FFFFFF?text=${friendUid.charAt(0).toUpperCase()}`,
       };
       setFriendUser(fetchedFriend);
@@ -71,13 +56,27 @@ export default function PrivateChatPage() {
   }
 
   return (
-    <div className="h-[calc(100vh-10rem)] md:h-[calc(100vh-12rem)]">
-      <ChatInterface
-        chatId={chatRoomId} // Use the consistent chatRoomId
-        chatMode="private"
-        chatTitle={`Chat with ${friendUser.name}`}
-        partner={friendUser}
-      />
+    <div className="flex flex-col h-full">
+        <header className="flex items-center gap-4 p-4 border-b bg-card">
+            <Button variant="ghost" size="icon" onClick={() => router.back()}>
+                <ArrowLeft className="h-5 w-5" />
+            </Button>
+            <div className="flex items-center gap-3">
+                <UserAvatar user={friendUser} className="h-10 w-10" />
+                <div>
+                    <h2 className="text-lg font-semibold">{friendUser.name}</h2>
+                    <p className="text-xs text-muted-foreground">Private Chat</p>
+                </div>
+            </div>
+        </header>
+        <div className="flex-grow min-h-0">
+             <ChatInterface
+                chatId={chatRoomId}
+                chatMode="private"
+                chatTitle="" // Title is now handled in the header above
+                partner={friendUser}
+             />
+        </div>
     </div>
   );
 }

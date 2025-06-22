@@ -1,1 +1,1 @@
-export const APP_NAME = 'Global Contact';
+export const APP_NAME = 'GlobaTalk Lite';
