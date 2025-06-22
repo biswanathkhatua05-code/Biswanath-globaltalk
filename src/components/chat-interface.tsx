@@ -391,7 +391,7 @@ export function ChatInterface({
         cleanupFirestore(chatId);
       }
     };
-  }, [isCallActive, chatId, currentFacingMode, isMicMuted, isCameraOff, toast, handleEndCall]);
+  }, [isCallActive, chatId, currentFacingMode, toast, handleEndCall]);
 
 
   const toggleMic = () => {
