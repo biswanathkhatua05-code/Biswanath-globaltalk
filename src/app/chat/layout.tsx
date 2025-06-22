@@ -19,7 +19,7 @@ import {
   SidebarInset,
   SidebarSeparator
 } from '@/components/ui/sidebar';
-import { Users, Shuffle, Search, LogOut, Settings, UserCircle, MessageSquareMore } from 'lucide-react';
+import { Users, Shuffle, Search, LogOut, Settings, UserCircle, MessageSquareMore, Youtube } from 'lucide-react';
 import { useAuth } from '@/context/auth-context';
 import { UserAvatar } from '@/components/user-avatar';
 import { Badge } from '@/components/ui/badge';
@@ -29,6 +29,7 @@ const navItems = [
   { href: '/chat/random', label: 'Random Chat', icon: Shuffle },
   { href: '/chat/global', label: 'Global Messages', icon: Users },
   { href: '/chat/find', label: 'Find Friends', icon: Search },
+  { href: '/chat/youtube', label: 'Videos', icon: Youtube },
 ];
 
 export default function ChatLayout({ children }: { children: ReactNode }) {
