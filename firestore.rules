@@ -2,75 +2,86 @@ rules_version = '2';
 
 service cloud.firestore {
   match /databases/{database}/documents {
-
-    // --- Helper Functions ---
-    // Checks if the requesting user is authenticated.
-    function isAuthenticated() {
+  
+    // =================================
+    // Helper Functions
+    // =================================
+    function isSignedIn() {
       return request.auth != null;
     }
-    
-    // Checks if the user is a participant in a private chat.
-    // Chat ID must be in the format 'uid1_uid2'.
-    function isPrivateChatParticipant(chatId) {
-      return isAuthenticated() && request.auth.uid in chatId.split('_');
-    }
 
-    // Checks if the user is a participant in a random chat.
+    // Securely checks if a user is part of a random chat session.
     function isRandomChatParticipant(sessionId) {
-      // Get the session document from the random chat pool.
-      let sessionDoc = get(/databases/$(database)/documents/random_chat_sessions_pool/$(sessionId));
-      // Check if the document exists and the user is either user1 or user2.
-      // We safely check for userId2's existence before trying to access it.
-      return isAuthenticated() && exists(/databases/$(database)/documents/random_chat_sessions_pool/$(sessionId)) &&
-             (request.auth.uid == sessionDoc.data.userId1 || 
-              (sessionDoc.data.userId2 != null && request.auth.uid == sessionDoc.data.userId2));
+      let docPath = /databases/$(database)/documents/random_chat_sessions_pool/$(sessionId);
+      if (!exists(docPath)) {
+        return false;
+      }
+      let sessionData = get(docPath).data;
+      // Also check if userId2 is present, otherwise comparison is with null
+      return request.auth.uid == sessionData.userId1 || (sessionData.keys().hasAny(['userId2']) && request.auth.uid == sessionData.userId2);
     }
     
-    // --- Collection Rules ---
+    // Checks if a user is part of a private chat based on the ID format.
+    function isPrivateChatParticipant(sessionId) {
+        return request.auth.uid in sessionId.split('_');
+    }
 
-    // Global Messages: Anyone can read, only authenticated users can write.
+    // =================================
+    // Collections
+    // =================================
+
+    // Global chat messages can be read by anyone, written by signed-in users.
     match /global_messages/{messageId} {
-      allow read;
-      allow create: if isAuthenticated();
-      // Users shouldn't be able to update/delete global messages.
+      allow read: if true;
+      allow create: if isSignedIn() && request.resource.data.userId == request.auth.uid;
       allow update, delete: if false;
     }
 
-    // Chat Sessions (Private Chats)
-    match /chat_sessions/{chatId} {
-      // Rules for the main chat document (if it were used).
-      // A user can read/write if they are a participant.
-      allow read, write: if isPrivateChatParticipant(chatId);
-
-      // Rules for the messages subcollection within a private chat.
-      match /messages/{messageId} {
-        allow read, write: if isPrivateChatParticipant(chatId);
-      }
+    // Private chat sessions and their messages.
+    match /chat_sessions/{sessionId}/{document=**} {
+      allow read, write: if isSignedIn() && isPrivateChatParticipant(sessionId);
     }
     
-    // Random Chat Sessions Pool
+    // Random chat session management.
     match /random_chat_sessions_pool/{sessionId} {
-      // Anyone authenticated can create a new session to wait for a partner.
-      allow create: if isAuthenticated();
+      // Allow signed-in users to query for waiting sessions.
+      allow read: if isSignedIn();
       
-      // Authenticated users can query the list to find a waiting partner.
-      allow list: if isAuthenticated();
-      
-      // Only participants can read or update their own session.
-      allow read, update: if isRandomChatParticipant(sessionId);
-    }
-    
-    // Messages within a Random Chat
-    match /random_chat_sessions_pool/{sessionId}/messages/{messageId} {
-      // Only participants can read or write messages.
-      allow read, write: if isRandomChatParticipant(sessionId);
+      // Allow a user to create a new waiting session for themselves.
+      allow create: if isSignedIn() 
+                    && request.resource.data.userId1 == request.auth.uid
+                    && request.resource.data.status == 'waiting';
+
+      // Allow updates for joining or disconnecting.
+      allow update: if isSignedIn() && (
+        // Case 1: A second user joins a waiting session.
+        (resource.data.status == 'waiting' 
+          && request.resource.data.status == 'active' 
+          && request.resource.data.userId2 == request.auth.uid
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'userId2', 'user2', 'updatedAt'])) 
+        ||
+        // Case 2: A participant disconnects from an active session.
+        (resource.data.status == 'active' 
+          && request.resource.data.status == 'disconnected' 
+          && (request.auth.uid == resource.data.userId1 || request.auth.uid == resource.data.userId2)
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'disconnectedAt']))
+      );
     }
 
-    // Video Call Signaling documents
+    // Messages within a random chat session.
+    match /random_chat_sessions_pool/{sessionId}/messages/{messageId} {
+        allow read: if isSignedIn() && isRandomChatParticipant(sessionId);
+        allow create: if isSignedIn() 
+                      && isRandomChatParticipant(sessionId)
+                      && request.resource.data.userId == request.auth.uid;
+        allow update, delete: if false;
+    }
+
+    // WebRTC Signaling for video calls.
+    // Kept simple to avoid introducing new issues. For production, this could be
+    // tightened by checking if the user is a participant of the parent chat.
     match /video_calls/{callId}/{document=**} {
-      // For simplicity, any authenticated user can read/write signaling data.
-      // This could be tightened to only allow participants of the callId.
-      allow read, write, delete: if isAuthenticated();
+      allow read, write: if isSignedIn();
     }
   }
 }
