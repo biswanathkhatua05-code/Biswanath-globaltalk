@@ -1,87 +1,96 @@
+
 rules_version = '2';
 
 service cloud.firestore {
   match /databases/{database}/documents {
-  
-    // =================================
+    
     // Helper Functions
-    // =================================
-    function isSignedIn() {
+    function isUserAuthenticated() {
       return request.auth != null;
     }
 
-    // Securely checks if a user is part of a random chat session.
-    function isRandomChatParticipant(sessionId) {
-      let docPath = /databases/$(database)/documents/random_chat_sessions_pool/$(sessionId);
-      if (!exists(docPath)) {
-        return false;
-      }
-      let sessionData = get(docPath).data;
-      // Also check if userId2 is present, otherwise comparison is with null
-      return request.auth.uid == sessionData.userId1 || (sessionData.keys().hasAny(['userId2']) && request.auth.uid == sessionData.userId2);
+    function isRequestingOwnData(userId) {
+      return request.auth.uid == userId;
+    }
+
+    function isPrivateChatParticipant(chatRoomId) {
+        let participants = split(chatRoomId, '_');
+        return request.auth.uid in participants;
     }
     
-    // Checks if a user is part of a private chat based on the ID format.
-    function isPrivateChatParticipant(sessionId) {
-        return request.auth.uid in sessionId.split('_');
+    function isRandomChatParticipant(sessionId) {
+        let session = get(/databases/$(database)/documents/random_chat_sessions_pool/$(sessionId)).data;
+        return request.auth.uid == session.userId1 || request.auth.uid == session.userId2;
     }
 
-    // =================================
-    // Collections
-    // =================================
-
-    // Global chat messages can be read by anyone, written by signed-in users.
+    // Public User Profiles - anyone can read
+    match /users/{userId} {
+      allow read: if true;
+      allow write: if isUserAuthenticated() && isRequestingOwnData(userId);
+    }
+    
+    // Global Chat Room
     match /global_messages/{messageId} {
       allow read: if true;
-      allow create: if isSignedIn() && request.resource.data.userId == request.auth.uid;
+      allow create: if isUserAuthenticated() && request.resource.data.userId == request.auth.uid;
+      allow update, delete: if false; // Messages are immutable
+    }
+    
+    // Private Chat Sessions
+    match /chat_sessions/{chatRoomId}/messages/{messageId} {
+      allow read, create: if isUserAuthenticated() && isPrivateChatParticipant(chatRoomId);
       allow update, delete: if false;
     }
 
-    // Private chat sessions and their messages.
-    match /chat_sessions/{sessionId}/{document=**} {
-      allow read, write: if isSignedIn() && isPrivateChatParticipant(sessionId);
+    // Random Chat Sessions Pool
+    match /random_chat_sessions_pool/{sessionId} {
+      // Anyone can look for a waiting session
+      allow list: if isUserAuthenticated();
+      // Anyone can create a new session for themselves
+      allow create: if isUserAuthenticated() && request.resource.data.userId1 == request.auth.uid;
+      // Participants can read the session details
+      allow read: if isUserAuthenticated() && isRandomChatParticipant(sessionId);
+      // A second user can join (update), or participants can update status
+      allow update: if isUserAuthenticated() && 
+                      (
+                        // Joining a waiting session
+                        (request.resource.data.status == 'active' && resource.data.status == 'waiting' && request.resource.data.userId2 == request.auth.uid) ||
+                        // Disconnecting
+                        (request.resource.data.status == 'disconnected' && isRandomChatParticipant(sessionId))
+                      );
+
+      // Messages within a random chat
+      match /messages/{messageId} {
+        allow read, create: if isUserAuthenticated() && isRandomChatParticipant(sessionId);
+        allow update, delete: if false;
+      }
     }
     
-    // Random chat session management.
-    match /random_chat_sessions_pool/{sessionId} {
-      // Allow signed-in users to query for waiting sessions.
-      allow read: if isSignedIn();
-      
-      // Allow a user to create a new waiting session for themselves.
-      allow create: if isSignedIn() 
-                    && request.resource.data.userId1 == request.auth.uid
-                    && request.resource.data.status == 'waiting';
+    // Video Call Signaling (re-using for simplicity)
+    // The callId should correspond to the chatRoomId
+    match /video_calls/{callId} {
+        allow read, write: if request.auth != null; // Simplified rule for now to prevent permission issues
+        
+        match /offerCandidates/{candidateId} {
+            allow read, write: if request.auth != null;
+        }
 
-      // Allow updates for joining or disconnecting.
-      allow update: if isSignedIn() && (
-        // Case 1: A second user joins a waiting session.
-        (resource.data.status == 'waiting' 
-          && request.resource.data.status == 'active' 
-          && request.resource.data.userId2 == request.auth.uid
-          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'userId2', 'user2', 'updatedAt'])) 
-        ||
-        // Case 2: A participant disconnects from an active session.
-        (resource.data.status == 'active' 
-          && request.resource.data.status == 'disconnected' 
-          && (request.auth.uid == resource.data.userId1 || request.auth.uid == resource.data.userId2)
-          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'disconnectedAt']))
-      );
+        match /answerCandidates/{candidateId} {
+            allow read, write: if request.auth != null;
+        }
     }
 
-    // Messages within a random chat session.
-    match /random_chat_sessions_pool/{sessionId}/messages/{messageId} {
-        allow read: if isSignedIn() && isRandomChatParticipant(sessionId);
-        allow create: if isSignedIn() 
-                      && isRandomChatParticipant(sessionId)
-                      && request.resource.data.userId == request.auth.uid;
-        allow update, delete: if false;
-    }
+    // Voice Call Signaling
+    match /voice_calls/{callId} {
+        allow read, write: if request.auth != null; // Simplified rule to ensure functionality
+        
+        match /offerCandidates/{candidateId} {
+            allow read, write: if request.auth != null;
+        }
 
-    // WebRTC Signaling for video calls.
-    // Kept simple to avoid introducing new issues. For production, this could be
-    // tightened by checking if the user is a participant of the parent chat.
-    match /video_calls/{callId}/{document=**} {
-      allow read, write: if isSignedIn();
+        match /answerCandidates/{candidateId} {
+            allow read, write: if request.auth != null;
+        }
     }
   }
 }

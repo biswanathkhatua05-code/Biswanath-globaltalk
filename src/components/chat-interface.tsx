@@ -6,7 +6,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { MessageBubble } from './message-bubble';
-import { Send, Paperclip, Mic, Video, Phone, AlertCircle, LogOut, Bot, VideoOff, XCircle, Loader2, StopCircle, MicOff, SwitchCamera, Minus, UserCircle } from 'lucide-react';
+import { Send, Paperclip, Mic, Video, Phone, AlertCircle, LogOut, Bot, VideoOff, XCircle, Loader2, StopCircle, MicOff, SwitchCamera, Minus, UserCircle, PhoneOff } from 'lucide-react';
 import { useAuth } from '@/context/auth-context';
 import { useChatModeration } from '@/hooks/use-chat-moderation';
 import { useToast } from '@/hooks/use-toast';
@@ -55,6 +55,13 @@ export function ChatInterface({
   const [isMicMuted, setIsMicMuted] = useState(false);
   const [isCameraOff, setIsCameraOff] = useState(false);
   const [currentFacingMode, setCurrentFacingMode] = useState<'user' | 'environment'>('user');
+
+  // States and Refs for Voice Calling
+  const [isVoiceCallActive, setIsVoiceCallActive] = useState(false);
+  const [isVoiceCallMuted, setIsVoiceCallMuted] = useState(false);
+  const remoteAudioRef = useRef<HTMLAudioElement>(null);
+  const voiceCallStreamRef = useRef<MediaStream | null>(null);
+  const voiceCallPeerConnectionRef = useRef<RTCPeerConnection | null>(null);
 
   const [isRecording, setIsRecording] = useState(false);
   const [micPermissionStatus, setMicPermissionStatus] = useState<'idle' | 'pending' | 'granted' | 'denied'>('idle');
@@ -124,13 +131,13 @@ export function ChatInterface({
 
 
   useEffect(() => {
-    if (!showVideoCall && scrollAreaRef.current) {
+    if (!showVideoCall && !isVoiceCallActive && scrollAreaRef.current) {
       const viewport = scrollAreaRef.current.querySelector('[data-radix-scroll-area-viewport]');
       if (viewport) {
         viewport.scrollTop = viewport.scrollHeight;
       }
     }
-  }, [messages, showVideoCall]);
+  }, [messages, showVideoCall, isVoiceCallActive]);
 
   useEffect(() => {
     if (moderationError) {
@@ -197,7 +204,7 @@ export function ChatInterface({
     if (localVideoRef.current && document.pictureInPictureEnabled && !document.pictureInPictureElement) {
         try {
             await localVideoRef.current.requestPictureInPicture();
-            setShowVideoCall(false); // Hide the main video UI. Call remains active.
+            setShowVideoCall(false);
         } catch(error) {
             toast({
                 variant: 'destructive',
@@ -211,6 +218,14 @@ export function ChatInterface({
 
 
   const handleHeaderVideoClick = useCallback(() => {
+    if(isVoiceCallActive) {
+       toast({
+        title: "Call in Progress",
+        description: "You cannot start a video call while in a voice call.",
+        variant: "destructive",
+      });
+      return;
+    }
     if (!isCallActive) {
       setIsCallActive(true);
       setShowVideoCall(true);
@@ -221,10 +236,36 @@ export function ChatInterface({
         document.exitPictureInPicture();
     }
     setShowVideoCall(prev => !prev);
-  }, [isCallActive, showVideoCall]);
+  }, [isCallActive, isVoiceCallActive, showVideoCall, toast]);
+
+  // --- Voice Call Handlers ---
+  const handleEndVoiceCall = useCallback(() => {
+    setIsVoiceCallActive(false);
+  }, []);
+
+  const handleToggleVoiceCall = useCallback(() => {
+    if (isCallActive) {
+      toast({
+        title: "Call in Progress",
+        description: "You cannot start a voice call while in a video call.",
+        variant: "destructive",
+      });
+      return;
+    }
+    setIsVoiceCallActive(prev => !prev);
+  }, [isCallActive, toast]);
+
+  const toggleVoiceCallMic = () => {
+    if (voiceCallStreamRef.current) {
+      voiceCallStreamRef.current.getAudioTracks().forEach(track => {
+        track.enabled = !track.enabled;
+        setIsVoiceCallMuted(!track.enabled);
+      });
+    }
+  };
 
 
-  // Effect for the entire WebRTC call lifecycle
+  // Effect for the entire Video Call lifecycle
   useEffect(() => {
     if (!isCallActive || !chatId) {
       return;
@@ -369,20 +410,22 @@ export function ChatInterface({
       const cleanupFirestore = async (id: string) => {
         try {
           const callDocRef = doc(firestore, 'video_calls', id);
-          const offerCandidatesRef = collection(callDocRef, 'offerCandidates');
-          const answerCandidatesRef = collection(callDocRef, 'answerCandidates');
-          
-          const [offerCandidatesSnap, answerCandidatesSnap] = await Promise.all([
-            getDocs(offerCandidatesRef),
-            getDocs(answerCandidatesRef)
-          ]);
-          
-          const deletePromises: Promise<void>[] = [];
-          offerCandidatesSnap.forEach(doc => deletePromises.push(deleteDoc(doc.ref)));
-          answerCandidatesSnap.forEach(doc => deletePromises.push(deleteDoc(doc.ref)));
-          await Promise.all(deletePromises);
+          if ((await getDoc(callDocRef)).exists()) {
+            const offerCandidatesRef = collection(callDocRef, 'offerCandidates');
+            const answerCandidatesRef = collection(callDocRef, 'answerCandidates');
+            
+            const [offerCandidatesSnap, answerCandidatesSnap] = await Promise.all([
+              getDocs(offerCandidatesRef),
+              getDocs(answerCandidatesRef)
+            ]);
+            
+            const deletePromises: Promise<void>[] = [];
+            offerCandidatesSnap.forEach(doc => deletePromises.push(deleteDoc(doc.ref)));
+            answerCandidatesSnap.forEach(doc => deletePromises.push(deleteDoc(doc.ref)));
+            await Promise.all(deletePromises);
 
-          await deleteDoc(callDocRef);
+            await deleteDoc(callDocRef);
+          }
         } catch (error) {
           console.error("Error cleaning up call documents:", error);
         }
@@ -391,7 +434,138 @@ export function ChatInterface({
         cleanupFirestore(chatId);
       }
     };
-  }, [isCallActive, chatId, currentFacingMode, toast, handleEndCall]);
+  }, [isCallActive, chatId, currentFacingMode, toast, handleEndCall, isCameraOff, isMicMuted]);
+
+
+  // Effect for the entire Voice Call lifecycle
+  useEffect(() => {
+    if (!isVoiceCallActive || !chatId || !currentUser) {
+      return;
+    }
+
+    let unsubscribers: (() => void)[] = [];
+    const pc = new RTCPeerConnection(servers);
+    voiceCallPeerConnectionRef.current = pc;
+    
+    const setupVoiceCall = async () => {
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
+        voiceCallStreamRef.current = stream;
+        stream.getTracks().forEach(track => pc.addTrack(track, stream));
+        stream.getAudioTracks().forEach(track => track.enabled = !isVoiceCallMuted);
+      } catch (error) {
+        console.error('Error accessing microphone:', error);
+        toast({
+          variant: 'destructive',
+          title: 'Microphone Access Denied',
+          description: 'Please check permissions to start a voice call.',
+        });
+        handleEndVoiceCall();
+        return;
+      }
+      
+      const remoteS = new MediaStream();
+      if (remoteAudioRef.current) {
+        remoteAudioRef.current.srcObject = remoteS;
+      }
+      
+      pc.ontrack = (event) => {
+        event.streams[0].getTracks().forEach(track => remoteS.addTrack(track));
+      };
+
+      const callDocRef = doc(firestore, 'voice_calls', chatId);
+      const offerCandidatesRef = collection(callDocRef, 'offerCandidates');
+      const answerCandidatesRef = collection(callDocRef, 'answerCandidates');
+
+      pc.onicecandidate = async (event) => {
+        if (event.candidate) {
+          const callDoc = await getDoc(callDocRef);
+          if (callDoc.exists() && callDoc.data().answer) {
+            await addDoc(answerCandidatesRef, event.candidate.toJSON());
+          } else {
+            await addDoc(offerCandidatesRef, event.candidate.toJSON());
+          }
+        }
+      };
+
+      const callDocSnap = await getDoc(callDocRef);
+
+      if (!callDocSnap.exists()) {
+        const offerDescription = await pc.createOffer();
+        await pc.setLocalDescription(offerDescription);
+        const offer = { sdp: offerDescription.sdp, type: offerDescription.type };
+        await setDoc(callDocRef, { offer });
+
+        const unsubAnswer = onSnapshot(callDocRef, (snapshot) => {
+          const data = snapshot.data();
+          if (!pc.currentRemoteDescription && data?.answer) {
+            pc.setRemoteDescription(new RTCSessionDescription(data.answer));
+          }
+        });
+        unsubscribers.push(unsubAnswer);
+
+        const unsubAnswerCandidates = onSnapshot(answerCandidatesRef, (snapshot) => {
+          snapshot.docChanges().forEach((change) => {
+            if (change.type === 'added') pc.addIceCandidate(new RTCIceCandidate(change.doc.data()));
+          });
+        });
+        unsubscribers.push(unsubAnswerCandidates);
+      } else {
+        const offer = callDocSnap.data().offer;
+        await pc.setRemoteDescription(new RTCSessionDescription(offer));
+        const answerDescription = await pc.createAnswer();
+        await pc.setLocalDescription(answerDescription);
+        const answer = { type: answerDescription.type, sdp: answerDescription.sdp };
+        await updateDoc(callDocRef, { answer });
+
+        const unsubOfferCandidates = onSnapshot(offerCandidatesRef, (snapshot) => {
+          snapshot.docChanges().forEach((change) => {
+            if (change.type === 'added') pc.addIceCandidate(new RTCIceCandidate(change.doc.data()));
+          });
+        });
+        unsubscribers.push(unsubOfferCandidates);
+      }
+    };
+
+    setupVoiceCall();
+
+    return () => {
+      if (voiceCallStreamRef.current) {
+        voiceCallStreamRef.current.getTracks().forEach(track => track.stop());
+        voiceCallStreamRef.current = null;
+      }
+      if (voiceCallPeerConnectionRef.current) {
+        voiceCallPeerConnectionRef.current.close();
+        voiceCallPeerConnectionRef.current = null;
+      }
+      unsubscribers.forEach(unsub => unsub && unsub());
+      if (remoteAudioRef.current) {
+        remoteAudioRef.current.srcObject = null;
+      }
+      
+      const cleanupFirestore = async (id: string) => {
+        try {
+          const callDocRef = doc(firestore, 'voice_calls', id);
+           if ((await getDoc(callDocRef)).exists()) {
+            const offerCandidatesRef = collection(callDocRef, 'offerCandidates');
+            const answerCandidatesRef = collection(callDocRef, 'answerCandidates');
+            const [offerCandidatesSnap, answerCandidatesSnap] = await Promise.all([getDocs(offerCandidatesRef), getDocs(answerCandidatesRef)]);
+            const deletePromises: Promise<void>[] = [];
+            offerCandidatesSnap.forEach(doc => deletePromises.push(deleteDoc(doc.ref)));
+            answerCandidatesSnap.forEach(doc => deletePromises.push(deleteDoc(doc.ref)));
+            await Promise.all(deletePromises);
+            await deleteDoc(callDocRef);
+           }
+        } catch (error) {
+          console.error("Error cleaning up voice call documents:", error);
+        }
+      };
+      if (chatId) {
+        cleanupFirestore(chatId);
+      }
+    };
+  }, [isVoiceCallActive, chatId, currentUser, toast, handleEndVoiceCall, isVoiceCallMuted]);
+
 
 
   const toggleMic = () => {
@@ -499,48 +673,72 @@ export function ChatInterface({
               <h2 className="text-lg font-semibold text-foreground truncate" title={chatTitle}>{chatTitle}</h2>
             </Link>
           ) : (
-            <>
-              {/* This part is for Global chat where there is no partner */}
-              <h2 className="text-lg font-semibold text-foreground truncate" title={chatTitle}>{chatTitle}</h2>
-            </>
+            <h2 className="text-lg font-semibold text-foreground truncate" title={chatTitle}>{chatTitle}</h2>
           )}
         </div>
-        <div className="flex items-center gap-1 shrink-0">
-          {chatMode !== 'global' && (
-            <>
-              <TooltipProvider>
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      onClick={handleHeaderVideoClick}
-                      className={cn("text-muted-foreground hover:text-primary", isCallActive && "text-primary")}
-                      disabled={isRecording || micPermissionStatus === 'pending'}
-                    >
-                      {showVideoCall ? <VideoOff className="h-5 w-5" /> : <Video className="h-5 w-5" />}
-                    </Button>
-                  </TooltipTrigger>
-                  <TooltipContent>
-                    <p>{showVideoCall ? "Hide Video Feed" : isCallActive ? "Show Video Feed" : "Start Video Call"}</p>
-                  </TooltipContent>
-                </Tooltip>
-              </TooltipProvider>
-
-              <TooltipProvider>
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <Button variant="ghost" size="icon" className="text-muted-foreground" disabled>
-                      <Phone className="h-5 w-5" />
-                    </Button>
-                  </TooltipTrigger>
-                  <TooltipContent>
-                    <p>Voice Call (Coming Soon)</p>
-                  </TooltipContent>
-                </Tooltip>
-              </TooltipProvider>
-            </>
+        <div className="flex items-center gap-2 shrink-0">
+          {chatMode !== 'global' && !isVoiceCallActive && (
+            <TooltipProvider>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    onClick={handleHeaderVideoClick}
+                    className={cn("text-muted-foreground hover:text-primary", isCallActive && "text-primary")}
+                    disabled={isRecording || micPermissionStatus === 'pending' || isVoiceCallActive}
+                  >
+                    {showVideoCall ? <VideoOff className="h-5 w-5" /> : <Video className="h-5 w-5" />}
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>
+                  <p>{showVideoCall ? "Hide Video Feed" : isCallActive ? "Show Video Feed" : "Start Video Call"}</p>
+                </TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
           )}
+
+          {chatMode !== 'global' && isVoiceCallActive && (
+             <div className="flex items-center gap-1 text-sm font-medium text-primary animate-pulse">
+                <Phone className="h-4 w-4"/>
+                <span>Voice Call...</span>
+             </div>
+          )}
+          
+          {chatMode !== 'global' && (
+            <TooltipProvider>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button 
+                    variant="ghost" 
+                    size="icon" 
+                    onClick={isVoiceCallActive ? toggleVoiceCallMic : handleToggleVoiceCall}
+                    className={cn("text-muted-foreground hover:text-primary", isVoiceCallActive && "text-primary")}
+                    disabled={isCallActive}
+                  >
+                    {isVoiceCallActive ? (isVoiceCallMuted ? <MicOff className="h-5 w-5"/> : <Mic className="h-5 w-5"/>) : <Phone className="h-5 w-5" />}
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>
+                  <p>{isVoiceCallActive ? (isVoiceCallMuted ? 'Unmute' : 'Mute') : 'Start Voice Call'}</p>
+                </TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
+          )}
+
+          {isVoiceCallActive && (
+            <TooltipProvider>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                   <Button variant="ghost" size="icon" onClick={handleToggleVoiceCall} className="text-destructive hover:bg-destructive/10">
+                    <PhoneOff className="h-5 w-5" />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent><p>End Call</p></TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
+          )}
+
           {chatMode !== 'global' && showDisconnectButton && (
             <TooltipProvider>
               <Tooltip>
@@ -673,6 +871,8 @@ export function ChatInterface({
         </ScrollArea>
       )}
 
+      {/* Hidden audio element for voice calls */}
+      <audio ref={remoteAudioRef} autoPlay playsInline />
 
       <footer className="p-4 border-t bg-background/80 backdrop-blur-sm">
         <form
@@ -693,7 +893,7 @@ export function ChatInterface({
                   size="icon" 
                   type="button" 
                   onClick={handleMicButtonClick}
-                  disabled={!isLoggedIn || isModerating || showVideoCall || isRecording || micPermissionStatus === 'pending' || (micPermissionStatus === 'denied' && !isRecording)}
+                  disabled={!isLoggedIn || isModerating || showVideoCall || isRecording || micPermissionStatus === 'pending' || (micPermissionStatus === 'denied' && !isRecording) || isVoiceCallActive}
                 >
                   {isRecording ? <StopCircle className="h-5 w-5 text-destructive" /> : <Mic className="h-5 w-5" />}
                 </Button>
@@ -710,11 +910,11 @@ export function ChatInterface({
             placeholder={isLoggedIn ? "Type a message..." : "Please log in to chat."}
             value={inputValue}
             onChange={(e) => setInputValue(e.target.value)}
-            disabled={!isLoggedIn || isModerating || showVideoCall || isRecording}
+            disabled={!isLoggedIn || isModerating || showVideoCall || isRecording || isVoiceCallActive}
             className="flex-1 text-sm"
             aria-label="Chat message input"
           />
-          <Button type="submit" size="icon" disabled={!inputValue.trim() || !isLoggedIn || isModerating || showVideoCall || isRecording} aria-label="Send message">
+          <Button type="submit" size="icon" disabled={!inputValue.trim() || !isLoggedIn || isModerating || showVideoCall || isRecording || isVoiceCallActive} aria-label="Send message">
             <Send className="h-5 w-5" />
           </Button>
         </form>
@@ -723,9 +923,9 @@ export function ChatInterface({
             <AlertCircle className="h-4 w-4 mr-1" /> You must be connected to send messages.
           </p>
         )}
-         {showVideoCall && (
+         {(showVideoCall || isVoiceCallActive) && (
            <p className="mt-2 text-xs text-muted-foreground text-center">
-            Message input disabled during video call.
+            Message input disabled during a call.
            </p>
          )}
          {isRecording && (
