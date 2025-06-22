@@ -31,5 +31,33 @@ console.log("Firebase Auth: Initialized.");
 firestore = getFirestore(app);
 console.log("Firebase Firestore: Initialized.");
 
+// WebRTC STUN/TURN server configuration
+const turnUrl = process.env.NEXT_PUBLIC_TURN_URL;
+const turnUsername = process.env.NEXT_PUBLIC_TURN_USERNAME;
+const turnPassword = process.env.NEXT_PUBLIC_TURN_PASSWORD;
+
+const iceServers = [
+  // Default STUN servers from Google
+  { urls: ['stun:stun1.l.google.com:19302', 'stun:stun2.l.google.com:19302'] },
+];
+
+// If TURN server credentials are provided, add them to the list.
+// This is highly recommended for production to handle various network conditions.
+if (turnUrl && turnUsername && turnPassword) {
+  iceServers.push({
+    urls: turnUrl,
+    username: turnUsername,
+    credential: turnPassword,
+  });
+  console.log("TURN server configuration loaded for WebRTC.");
+} else {
+  console.warn("TURN server credentials not found. WebRTC calls may fail on restrictive networks.");
+}
+
+export const servers = {
+  iceServers,
+  iceCandidatePoolSize: 10,
+};
+
 
 export { app, auth, firestore };

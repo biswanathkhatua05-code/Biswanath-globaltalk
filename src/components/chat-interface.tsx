@@ -14,7 +14,7 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/comp
 import { UserAvatar } from '@/components/user-avatar';
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { cn } from '@/lib/utils';
-import { firestore } from '@/lib/firebase'; // Import firestore
+import { firestore, servers } from '@/lib/firebase'; // Import firestore and servers
 import { collection, addDoc, serverTimestamp, query, orderBy, onSnapshot, Timestamp, where, limit, doc, setDoc, getDoc, updateDoc, arrayUnion, deleteDoc, getDocs } from 'firebase/firestore'; // Firestore imports
 
 interface ChatInterfaceProps {
@@ -25,17 +25,6 @@ interface ChatInterfaceProps {
   onDisconnect?: () => void;
   partner?: User; 
 }
-
-// STUN servers configuration for WebRTC
-const servers = {
-  iceServers: [
-    {
-      urls: ['stun:stun1.l.google.com:19302', 'stun:stun2.l.google.com:19302'],
-    },
-  ],
-  iceCandidatePoolSize: 10,
-};
-
 
 export function ChatInterface({
   chatId,
@@ -566,11 +555,11 @@ export function ChatInterface({
             autoPlay
             playsInline
           />
-          {(!remoteStream || remoteStream.getTracks().length === 0) && (
-            <div className="absolute inset-0 flex flex-col items-center justify-center bg-neutral-900 text-neutral-600 pointer-events-none">
+          {(!remoteStream || remoteStream.getVideoTracks().length === 0) && (
+            <div className="absolute inset-0 flex flex-col items-center justify-center bg-neutral-900 text-neutral-600 pointer-events-none text-center p-4">
                 <UserCircle className="w-24 h-24" />
-                <p className="mt-4 text-lg">Connecting to {partner?.name || 'your partner'}...</p>
-                <p className="text-sm text-neutral-700">(Waiting for user to join)</p>
+                <p className="mt-4 text-lg">Waiting for {partner?.name || 'partner'}</p>
+                <p className="text-sm text-neutral-700">The call will begin once they join and enable their camera.</p>
             </div>
           )}
 

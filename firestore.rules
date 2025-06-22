@@ -1,45 +1,49 @@
-
 rules_version = '2';
 
 service cloud.firestore {
   match /databases/{database}/documents {
 
-    // Global Messages: Anyone authenticated can read, only authenticated users can write their own messages.
+    // Global Messages: Anyone authenticated can read, and write their own messages.
     match /global_messages/{messageId} {
       allow read: if request.auth != null;
       allow create: if request.auth != null && request.resource.data.userId == request.auth.uid;
-      // allow update, delete: if false; // Generally, messages aren't updated or deleted by users
     }
 
-    // Chat Sessions (for Private and Random chats)
-    // chat_sessions/{chat_session_id}/messages/{message_id}
+    // Private Chat Sessions: Only participants can read/write.
+    // The chatSessionId is composed of the two user UIDs, sorted and joined by '_'.
     match /chat_sessions/{chatSessionId}/messages/{messageId} {
-      // Allow read/create if user is authenticated. In a real app, you would restrict this to only participants of the chat.
-      // For this app's simplicity, any authenticated user can read/write messages to any session.
-      allow read: if request.auth != null;
-      allow create: if request.auth != null && request.resource.data.userId == request.auth.uid;
-      // Do not allow updates or deletes to messages by users for now
-      // allow update, delete: if false;
+      allow read: if request.auth != null && request.auth.uid in chatSessionId.split('_');
+      allow create: if request.auth != null && request.auth.uid in chatSessionId.split('_') && request.resource.data.userId == request.auth.uid;
     }
 
-    // Random Chat Sessions Pool (the session document itself, not messages inside it)
+    // Random Chat Sessions Pool: Documents that match users for random chats.
     match /random_chat_sessions_pool/{sessionId} {
-      allow read: if request.auth != null; // Authenticated users can read to find sessions
-      allow create: if request.auth != null && request.resource.data.userId1 == request.auth.uid; // User can create a session for themselves
-      allow update: if request.auth != null; // Simplified for development
-      // allow delete: if request.auth != null; // Simplified for development
+      // Anyone can query the list to find a partner.
+      allow read: if request.auth != null;
+      // Users can create a session, starting as user1.
+      allow create: if request.auth != null && request.resource.data.userId1 == request.auth.uid;
+      // Either participant can update the session (e.g., user2 joins, or either disconnects).
+      allow update: if request.auth != null && (resource.data.userId1 == request.auth.uid || resource.data.userId2 == request.auth.uid);
     }
     
-    // Video Call Signaling
+    // Random Chat Messages: Only participants can read/write messages.
+    match /random_chat_sessions_pool/{sessionId}/messages/{messageId} {
+      function isParticipant(sessionId) {
+        let session = get(/databases/$(database)/documents/random_chat_sessions_pool/$(sessionId)).data;
+        return request.auth.uid == session.userId1 || request.auth.uid == session.userId2;
+      }
+
+      allow read: if request.auth != null && isParticipant(sessionId);
+      allow create: if request.auth != null && isParticipant(sessionId) && request.resource.data.userId == request.auth.uid;
+    }
+
+    // Video Call Signaling: Only participants can read/write signaling data.
+    // The callId is the same as the chatId (e.g., userA_userB).
     match /video_calls/{callId} {
-      allow read, write: if request.auth != null;
-      
-      match /offerCandidates/{candidateId} {
-        allow read, write: if request.auth != null;
-      }
-      match /answerCandidates/{candidateId} {
-        allow read, write: if request.auth != null;
-      }
+      allow read, write: if request.auth != null && request.auth.uid in callId.split('_');
+    }
+    match /video_calls/{callId}/{candidatesCollection}/{candidateId} {
+       allow read, write: if request.auth != null && request.auth.uid in callId.split('_');
     }
 
   }
