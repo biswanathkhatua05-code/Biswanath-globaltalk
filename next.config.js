@@ -8,6 +8,18 @@ const nextConfig = {
       "https://9003-firebase-studio-1747198792422.cluster-iktsryn7xnhpexlu6255bftka4.cloudworkstations.dev", // Added for new port
     ],
   },
+  images: {
+    remotePatterns: [
+      {
+        protocol: 'https',
+        hostname: 'placehold.co',
+      },
+      {
+        protocol: 'https',
+        hostname: 'api.dicebear.com',
+      },
+    ],
+  },
 };
 
 module.exports = nextConfig;
