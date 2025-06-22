@@ -16,6 +16,7 @@ import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { cn } from '@/lib/utils';
 import { firestore, servers } from '@/lib/firebase'; // Import firestore and servers
 import { collection, addDoc, serverTimestamp, query, orderBy, onSnapshot, Timestamp, where, limit, doc, setDoc, getDoc, updateDoc, arrayUnion, deleteDoc, getDocs } from 'firebase/firestore'; // Firestore imports
+import Link from 'next/link';
 
 interface ChatInterfaceProps {
   chatId: string; 
@@ -492,8 +493,17 @@ export function ChatInterface({
     <div className="flex h-full flex-col bg-card border rounded-lg shadow-xl overflow-hidden">
       <header className="flex items-center justify-between p-4 border-b">
         <div className="flex items-center gap-2 min-w-0">
-          {partner && <UserAvatar user={partner} className="h-8 w-8"/>}
-          <h2 className="text-lg font-semibold text-foreground truncate" title={chatTitle}>{chatTitle}</h2>
+          {partner ? (
+            <Link href={`/chat/profile/${partner.id}`} className="flex items-center gap-2 min-w-0 hover:bg-accent/50 p-2 -m-2 rounded-lg transition-colors duration-200">
+              <UserAvatar user={partner} className="h-8 w-8"/>
+              <h2 className="text-lg font-semibold text-foreground truncate" title={chatTitle}>{chatTitle}</h2>
+            </Link>
+          ) : (
+            <>
+              {/* This part is for Global chat where there is no partner */}
+              <h2 className="text-lg font-semibold text-foreground truncate" title={chatTitle}>{chatTitle}</h2>
+            </>
+          )}
         </div>
         <div className="flex items-center gap-1 shrink-0">
           {chatMode !== 'global' && (
