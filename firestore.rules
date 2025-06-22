@@ -2,49 +2,54 @@ rules_version = '2';
 
 service cloud.firestore {
   match /databases/{database}/documents {
-
-    // Global Messages: Anyone authenticated can read, and write their own messages.
+    
+    // Global messages: Anyone authenticated can read, anyone can write their own messages.
     match /global_messages/{messageId} {
       allow read: if request.auth != null;
+      // Rule for creating a new message.
+      // The new message's userId must match the authenticated user's UID.
       allow create: if request.auth != null && request.resource.data.userId == request.auth.uid;
-    }
-
-    // Private Chat Sessions: Only participants can read/write.
-    // The chatSessionId is composed of the two user UIDs, sorted and joined by '_'.
-    match /chat_sessions/{chatSessionId}/messages/{messageId} {
-      allow read: if request.auth != null && request.auth.uid in chatSessionId.split('_');
-      allow create: if request.auth != null && request.auth.uid in chatSessionId.split('_') && request.resource.data.userId == request.auth.uid;
-    }
-
-    // Random Chat Sessions Pool: Documents that match users for random chats.
-    match /random_chat_sessions_pool/{sessionId} {
-      // Anyone can query the list to find a partner.
-      allow read: if request.auth != null;
-      // Users can create a session, starting as user1.
-      allow create: if request.auth != null && request.resource.data.userId1 == request.auth.uid;
-      // Either participant can update the session (e.g., user2 joins, or either disconnects).
-      allow update: if request.auth != null && (resource.data.userId1 == request.auth.uid || resource.data.userId2 == request.auth.uid);
+      // No updates or deletes for global messages.
+      allow update, delete: if false;
     }
     
-    // Random Chat Messages: Only participants can read/write messages.
-    match /random_chat_sessions_pool/{sessionId}/messages/{messageId} {
-      function isParticipant(sessionId) {
-        let session = get(/databases/$(database)/documents/random_chat_sessions_pool/$(sessionId)).data;
-        return request.auth.uid == session.userId1 || request.auth.uid == session.userId2;
-      }
-
-      allow read: if request.auth != null && isParticipant(sessionId);
-      allow create: if request.auth != null && isParticipant(sessionId) && request.resource.data.userId == request.auth.uid;
+    // Private chat sessions
+    // The chatId is formatted as 'uid1_uid2' with UIDs sorted alphabetically.
+    match /chat_sessions/{chatId}/{document=**} {
+       // Allow read/write to the session doc or any message in its subcollections
+       // only if the authenticated user's UID is part of the chatId.
+       allow read, write: if request.auth != null && request.auth.uid in chatId.split('_');
     }
 
-    // Video Call Signaling: Only participants can read/write signaling data.
-    // The callId is the same as the chatId (e.g., userA_userB).
-    match /video_calls/{callId} {
-      allow read, write: if request.auth != null && request.auth.uid in callId.split('_');
-    }
-    match /video_calls/{callId}/{candidatesCollection}/{candidateId} {
-       allow read, write: if request.auth != null && request.auth.uid in callId.split('_');
+    // Random chat sessions pool
+    match /random_chat_sessions_pool/{sessionId} {
+       // Anyone can create a waiting session for themselves.
+       allow create: if request.auth != null && request.resource.data.userId1 == request.auth.uid;
+       
+       // Allow reading the session document to check its status.
+       allow read: if request.auth != null;
+       
+       // Allow a user to join a session (update) if it's 'waiting' and they are not the creator.
+       allow update: if request.auth != null 
+                      && resource.data.status == 'waiting' 
+                      && request.resource.data.userId2 == request.auth.uid
+                      && resource.data.userId1 != request.auth.uid;
+       
+       // Messages can be read/written only by the two participants of the session.
+       match /messages/{messageId} {
+          // We use get() to fetch the parent session document to check for participants.
+          // This rule applies to both reading and creating messages.
+          allow read, create: if request.auth != null &&
+                               (request.auth.uid == get(/databases/$(database)/documents/random_chat_sessions_pool/$(sessionId)).data.user1.id ||
+                                request.auth.uid == get(/databases/$(database)/documents/random_chat_sessions_pool/$(sessionId)).data.user2.id);
+          allow update, delete: if false; // Don't allow editing/deleting messages.
+       }
     }
 
+    // Video call signaling documents
+    // These are temporary. Allow any authenticated user to create/read/update/delete.
+    match /video_calls/{callId}/{document=**} {
+      allow read, write: if request.auth != null;
+    }
   }
 }
