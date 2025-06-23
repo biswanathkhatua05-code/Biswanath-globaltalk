@@ -36,8 +36,6 @@ export default function VideoWatchPage() {
 
   // Fetch video, comments, and recommended videos
   useEffect(() => {
-    if (!videoId) return;
-
     const fetchAllData = async () => {
       setIsLoading(true);
       setError(null);
@@ -81,8 +79,13 @@ export default function VideoWatchPage() {
       }
     };
 
-    fetchAllData();
-  }, [videoId]);
+    if (isLoggedIn && videoId) {
+      fetchAllData();
+    } else if (!isLoggedIn) {
+      // Don't fetch, wait for auth state to resolve. The global loading screen will show.
+      setIsLoading(true);
+    }
+  }, [videoId, isLoggedIn]);
   
   const handlePostComment = async () => {
     if (!newComment.trim() || !userProfile || !isLoggedIn) {

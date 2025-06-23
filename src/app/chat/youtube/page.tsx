@@ -1,6 +1,7 @@
 
 "use client";
 import { useState, useEffect } from 'react';
+import { useAuth } from '@/context/auth-context';
 import { firestore } from '@/lib/firebase';
 import { collection, getDocs, orderBy, query } from 'firebase/firestore';
 import type { Video } from '@/lib/types';
@@ -74,6 +75,7 @@ export default function YouTubeGalleryPage() {
   const [videos, setVideos] = useState<Video[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const { isLoggedIn } = useAuth();
 
   useEffect(() => {
     const fetchVideos = async () => {
@@ -93,18 +95,23 @@ export default function YouTubeGalleryPage() {
       }
     };
 
-    fetchVideos();
-  }, []);
+    if (isLoggedIn) {
+      fetchVideos();
+    }
+  }, [isLoggedIn]);
 
   if (error) {
     return <div className="text-center text-destructive">{error}</div>;
   }
 
+  // The isLoading state will show the skeleton loaders until fetching is complete or auth resolves.
+  const showLoading = isLoading || !isLoggedIn;
+
   return (
     <div className="container mx-auto px-0 sm:px-4 py-4">
       <h1 className="text-3xl font-bold mb-6">Explore Videos</h1>
       
-      {isLoading ? (
+      {showLoading ? (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-x-4 gap-y-8">
             {Array.from({ length: 8 }).map((_, i) => <VideoSkeleton key={i} />)}
         </div>
