@@ -3,18 +3,21 @@
 import type { ReactNode } from 'react';
 import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
-import { auth } from '@/lib/firebase'; // Import Firebase auth instance
+import { auth, firestore } from '@/lib/firebase'; // Import Firebase auth instance
 import { 
   onAuthStateChanged, 
   signInAnonymously, 
   signOut,
   type User as FirebaseUser 
 } from 'firebase/auth';
+import { doc, getDoc, setDoc } from 'firebase/firestore';
 import { Loader2 } from 'lucide-react';
+import type { User } from '@/lib/types';
 
 interface AuthContextType {
   userId: string | null;
-  firebaseUser: FirebaseUser | null; // Store the Firebase user object
+  firebaseUser: FirebaseUser | null;
+  userProfile: User | null; // This will hold the full user profile from Firestore
   loginAnonymously: () => Promise<void>;
   logout: () => Promise<void>;
   isLoggedIn: boolean;
@@ -25,44 +28,59 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const [firebaseUser, setFirebaseUser] = useState<FirebaseUser | null>(null);
-  const [isLoadingAuth, setIsLoadingAuth] = useState(true); // Start as true
+  const [userProfile, setUserProfile] = useState<User | null>(null);
+  const [isLoadingAuth, setIsLoadingAuth] = useState(true);
   const router = useRouter();
 
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, (user) => {
-      setFirebaseUser(user);
+    const unsubscribe = onAuthStateChanged(auth, async (fbUser) => {
+      if (fbUser) {
+        // User is signed in. Fetch or create their profile in Firestore.
+        const userRef = doc(firestore, 'users', fbUser.uid);
+        const userSnap = await getDoc(userRef);
+
+        if (userSnap.exists()) {
+          setUserProfile({ id: userSnap.id, ...userSnap.data() } as User);
+        } else {
+          // New user, create a default profile for them
+          const newUser: User = {
+            id: fbUser.uid,
+            name: fbUser.displayName || `User ${fbUser.uid.substring(0, 6)}`,
+            avatarUrl: fbUser.photoURL || `https://api.dicebear.com/8.x/lorelei/svg?seed=${fbUser.uid}`,
+            isCreator: false, // Default to not being a creator
+          };
+          await setDoc(userRef, newUser);
+          setUserProfile(newUser);
+        }
+        setFirebaseUser(fbUser);
+      } else {
+        // User is signed out
+        setFirebaseUser(null);
+        setUserProfile(null);
+      }
       setIsLoadingAuth(false);
     });
-    return () => unsubscribe(); // Cleanup subscription on unmount
+    return () => unsubscribe();
   }, []);
 
   const loginAnonymously = useCallback(async () => {
     setIsLoadingAuth(true);
     try {
       await signInAnonymously(auth);
-      // onAuthStateChanged will handle setting the user and navigating if needed
-      // router.push('/chat'); // Navigation can be handled based on auth state in layouts/pages
     } catch (error) {
       console.error("Anonymous login failed:", error);
-      // Handle error appropriately, e.g., show a toast message
-    } finally {
-      // setIsLoadingAuth(false); // onAuthStateChanged handles this
     }
-  }, [router]);
+  }, []);
 
   const logout = useCallback(async () => {
     setIsLoadingAuth(true);
     try {
       await signOut(auth);
-      // router.push('/'); // Navigation can be handled based on auth state
     } catch (error) {
       console.error("Logout failed:", error);
-    } finally {
-      // setIsLoadingAuth(false); // onAuthStateChanged handles this
     }
-  }, [router]);
+  }, []);
 
-  // If still checking auth state, show a global loader or similar
   if (isLoadingAuth) {
     return (
       <div className="flex min-h-screen flex-col items-center justify-center bg-background p-8">
@@ -77,6 +95,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       value={{ 
         userId: firebaseUser ? firebaseUser.uid : null, 
         firebaseUser,
+        userProfile,
         loginAnonymously, 
         logout, 
         isLoggedIn: !!firebaseUser,

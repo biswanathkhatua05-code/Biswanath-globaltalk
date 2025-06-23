@@ -1,143 +1,123 @@
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { Button } from "@/components/ui/button";
-import { ThumbsUp, ThumbsDown, Share2, MoreHorizontal, Bell } from "lucide-react";
-import Image from "next/image";
-import Link from "next/link";
-import { Card, CardContent } from "@/components/ui/card";
-import { Separator } from "@/components/ui/separator";
 
-const sampleVideo = {
-  id: "dQw4w9WgXcQ", // Rick Astley - Never Gonna Give You Up
-  title: "Exploring the Wonders of the Cosmos",
-  channelName: "CosmoQuest",
-  subscribers: "1.2M",
-  views: "2,458,901",
-  postedDate: "3 weeks ago",
-  likes: "150K",
-  description: "Join us on an epic journey through space and time as we explore distant galaxies, mysterious nebulae, and the secrets of our universe. This documentary brings the cosmos closer than ever before with stunning visuals and expert commentary.",
-  channelAvatar: "https://api.dicebear.com/8.x/bottts/svg?seed=cosmoquest"
-};
+"use client";
+import { useState, useEffect } from 'react';
+import { firestore } from '@/lib/firebase';
+import { collection, getDocs, orderBy, query } from 'firebase/firestore';
+import type { Video } from '@/lib/types';
+import Link from 'next/link';
+import Image from 'next/image';
+import { Card, CardContent } from '@/components/ui/card';
+import { Skeleton } from '@/components/ui/skeleton';
+import { formatDistanceToNow } from 'date-fns';
 
-const recommendedVideos = [
-  { id: 1, title: "The Secrets of Deep Ocean Life", channel: "AquaVerse", views: "1.1M", thumbnail: "https://placehold.co/320x180/000000/FFFFFF", hint: "ocean life" },
-  { id: 2, title: "Building a Modern UI with Next.js", channel: "CodeStream", views: "540K", thumbnail: "https://placehold.co/320x180/000000/FFFFFF", hint: "code computer" },
-  { id: 3, title: "Ultimate Guide to Landscape Photography", channel: "PixelPerfect", views: "890K", thumbnail: "https://placehold.co/320x180/000000/FFFFFF", hint: "landscape photography" },
-  { id: 4, title: "The Physics of Black Holes Explained", channel: "AstroLeap", views: "3.2M", thumbnail: "https://placehold.co/320x180/000000/FFFFFF", hint: "black hole" },
-  { id: 5, title: "How AI is Changing Our World", channel: "TechForward", views: "780K", thumbnail: "https://placehold.co/320x180/000000/FFFFFF", hint: "artificial intelligence" },
-];
-
-const comments = [
-    { id: 1, author: "AstroFan22", avatar: "https://api.dicebear.com/8.x/pixel-art/svg?seed=AstroFan22", text: "Absolutely breathtaking visuals! I felt like I was traveling through space myself. Amazing work!" },
-    { id: 2, author: "CuriousMind", avatar: "https://api.dicebear.com/8.x/pixel-art/svg?seed=CuriousMind", text: "This is the best documentary I've seen on the cosmos. So much information packed in an understandable way." },
-    { id: 3, author: "RocketGirl", avatar: "https://api.dicebear.com/8.x/pixel-art/svg?seed=RocketGirl", text: "Can you do a video on wormholes next? Would love to hear your take on it!" },
-];
-
-
-export default function YouTubePage() {
+function VideoCard({ video }: { video: Video }) {
+  const timeAgo = video.createdAt ? formatDistanceToNow(video.createdAt.toDate(), { addSuffix: true }) : '...';
+  
   return (
-    <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 p-0 sm:p-4">
-      {/* Main Content */}
-      <div className="lg:col-span-2">
-        {/* Video Player */}
-        <div className="aspect-video w-full mb-4">
-          <iframe
-            className="w-full h-full rounded-xl shadow-lg"
-            src={`https://www.youtube.com/embed/${sampleVideo.id}`}
-            title="YouTube video player"
-            frameBorder="0"
-            allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-            allowFullScreen
-          ></iframe>
+    <Link href={`/chat/youtube/${video.id}`} className="block group">
+      <Card className="overflow-hidden transition-all duration-300 ease-in-out hover:shadow-lg hover:-translate-y-1">
+        <div className="aspect-video relative">
+          <Image
+            src={video.thumbnailUrl}
+            alt={video.title}
+            fill
+            className="object-cover"
+            data-ai-hint="video thumbnail"
+          />
         </div>
-
-        {/* Video Info */}
-        <h1 className="text-2xl font-bold mb-2">{sampleVideo.title}</h1>
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-4">
-          <div className="flex items-center gap-3">
-            <Avatar>
-              <AvatarImage src={sampleVideo.channelAvatar} alt={sampleVideo.channelName} data-ai-hint="channel avatar"/>
-              <AvatarFallback>{sampleVideo.channelName.charAt(0)}</AvatarFallback>
-            </Avatar>
+        <CardContent className="p-3">
+          <div className="flex items-start gap-3">
+            <Image
+              src={video.creatorAvatarUrl}
+              alt={video.creatorName}
+              width={36}
+              height={36}
+              className="rounded-full mt-1"
+              data-ai-hint="creator avatar"
+            />
             <div>
-              <p className="font-semibold">{sampleVideo.channelName}</p>
-              <p className="text-sm text-muted-foreground">{sampleVideo.subscribers} subscribers</p>
+              <h3 className="font-semibold text-base leading-snug line-clamp-2 group-hover:text-primary">
+                {video.title}
+              </h3>
+              <p className="text-sm text-muted-foreground mt-1">{video.creatorName}</p>
+              <p className="text-sm text-muted-foreground">
+                {video.views.toLocaleString()} views &bull; {timeAgo}
+              </p>
             </div>
-            <Button variant="secondary" className="ml-4 rounded-full">
-              <Bell className="mr-2 h-4 w-4"/>
-              Subscribed
-            </Button>
           </div>
-          <div className="flex items-center gap-2">
-            <Button variant="secondary" className="rounded-full">
-              <ThumbsUp className="mr-2 h-4 w-4" /> {sampleVideo.likes}
-            </Button>
-            <Button variant="secondary" className="rounded-full">
-              <ThumbsDown className="h-4 w-4" />
-            </Button>
-            <Button variant="secondary" className="rounded-full">
-              <Share2 className="mr-2 h-4 w-4" /> Share
-            </Button>
-            <Button variant="secondary" size="icon" className="rounded-full">
-              <MoreHorizontal className="h-4 w-4" />
-            </Button>
-          </div>
-        </div>
+        </CardContent>
+      </Card>
+    </Link>
+  );
+}
 
-        {/* Description */}
-        <Card className="bg-muted/60 p-4 rounded-xl mb-6">
-          <CardContent className="p-0">
-            <p className="font-semibold text-sm mb-1">{sampleVideo.views} views &bull; {sampleVideo.postedDate}</p>
-            <p className="text-sm whitespace-pre-line">{sampleVideo.description}</p>
-          </CardContent>
-        </Card>
-        
-        <Separator className="my-6"/>
-
-        {/* Comments Section */}
-        <div>
-          <h2 className="text-xl font-bold mb-4">{comments.length} Comments</h2>
-          <div className="space-y-6">
-            {comments.map(comment => (
-              <div key={comment.id} className="flex items-start gap-3">
-                <Avatar className="h-10 w-10">
-                  <AvatarImage src={comment.avatar} alt={comment.author} data-ai-hint="commenter avatar" />
-                  <AvatarFallback>{comment.author.charAt(0)}</AvatarFallback>
-                </Avatar>
-                <div>
-                  <p className="font-semibold text-sm">{comment.author}</p>
-                  <p className="text-sm">{comment.text}</p>
-                </div>
-              </div>
-            ))}
+function VideoSkeleton() {
+  return (
+    <div className="block">
+      <Skeleton className="aspect-video w-full" />
+      <div className="p-3">
+        <div className="flex items-start gap-3">
+          <Skeleton className="h-9 w-9 rounded-full mt-1" />
+          <div className="flex-1 space-y-2">
+            <Skeleton className="h-4 w-full" />
+            <Skeleton className="h-4 w-3/4" />
+            <Skeleton className="h-3 w-1/2" />
           </div>
         </div>
       </div>
+    </div>
+  );
+}
 
-      {/* Recommended Videos */}
-      <div className="space-y-4">
-        <h2 className="text-xl font-bold lg:hidden">Up Next</h2>
-        {recommendedVideos.map(video => (
-          <Link href="#" key={video.id}>
-            <div className="flex gap-3 hover:bg-muted/50 p-2 rounded-lg transition-colors cursor-pointer">
-              <div className="w-40 flex-shrink-0">
-                <Image
-                  src={video.thumbnail}
-                  alt={video.title}
-                  width={160}
-                  height={90}
-                  className="rounded-lg object-cover aspect-video"
-                  data-ai-hint={video.hint}
-                />
-              </div>
-              <div>
-                <h3 className="text-sm font-semibold leading-tight line-clamp-2">{video.title}</h3>
-                <p className="text-xs text-muted-foreground mt-1">{video.channel}</p>
-                <p className="text-xs text-muted-foreground">{video.views} views</p>
-              </div>
-            </div>
-          </Link>
-        ))}
-      </div>
+
+export default function YouTubeGalleryPage() {
+  const [videos, setVideos] = useState<Video[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    const fetchVideos = async () => {
+      setIsLoading(true);
+      setError(null);
+      try {
+        const videosCollection = collection(firestore, 'videos');
+        const q = query(videosCollection, orderBy('createdAt', 'desc'));
+        const querySnapshot = await getDocs(q);
+        const fetchedVideos = querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Video));
+        setVideos(fetchedVideos);
+      } catch (err) {
+        console.error("Error fetching videos:", err);
+        setError("Could not load videos. Please try again later.");
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    fetchVideos();
+  }, []);
+
+  if (error) {
+    return <div className="text-center text-destructive">{error}</div>;
+  }
+
+  return (
+    <div className="container mx-auto px-0 sm:px-4 py-4">
+      <h1 className="text-3xl font-bold mb-6">Explore Videos</h1>
+      
+      {isLoading ? (
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-x-4 gap-y-8">
+            {Array.from({ length: 8 }).map((_, i) => <VideoSkeleton key={i} />)}
+        </div>
+      ) : videos.length === 0 ? (
+        <div className="text-center py-16 text-muted-foreground">
+          <h2 className="text-xl">No Videos Yet</h2>
+          <p>Check back later or ask a creator to upload something!</p>
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-x-4 gap-y-8">
+            {videos.map(video => <VideoCard key={video.id} video={video} />)}
+        </div>
+      )}
     </div>
   );
 }

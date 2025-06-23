@@ -19,7 +19,7 @@ import {
   SidebarInset,
   SidebarSeparator
 } from '@/components/ui/sidebar';
-import { Users, Shuffle, Search, LogOut, Settings, UserCircle, MessageSquareMore, Youtube } from 'lucide-react';
+import { Users, Shuffle, Search, LogOut, Settings, UserCircle, MessageSquareMore, Youtube, UploadCloud } from 'lucide-react';
 import { useAuth } from '@/context/auth-context';
 import { UserAvatar } from '@/components/user-avatar';
 import { Badge } from '@/components/ui/badge';
@@ -32,12 +32,15 @@ const navItems = [
   { href: '/chat/youtube', label: 'Videos', icon: Youtube },
 ];
 
+const creatorNavItems = [
+  { href: '/chat/upload', label: 'Upload Video', icon: UploadCloud }
+]
+
 export default function ChatLayout({ children }: { children: ReactNode }) {
   const pathname = usePathname();
-  const { userId, logout, isLoggedIn } = useAuth();
+  const { userId, userProfile, logout, isLoggedIn } = useAuth();
   const router = useRouter();
 
-  // Redirect to welcome page if not logged in
   useEffect(() => {
     if (!isLoggedIn) {
       router.replace('/');
@@ -45,7 +48,6 @@ export default function ChatLayout({ children }: { children: ReactNode }) {
   }, [isLoggedIn, router]);
 
   if (!isLoggedIn) {
-     // Render nothing or a loading indicator while redirecting
      return <div className="flex min-h-screen flex-col items-center justify-center bg-background p-8">
        <p className="text-foreground">Loading session...</p>
      </div>;
@@ -82,17 +84,40 @@ export default function ChatLayout({ children }: { children: ReactNode }) {
                   </Link>
                 </SidebarMenuItem>
               ))}
+
+              {userProfile?.isCreator && (
+                <>
+                  <SidebarSeparator className="my-2" />
+                  {creatorNavItems.map((item) => (
+                    <SidebarMenuItem key={item.href}>
+                      <Link href={item.href} legacyBehavior passHref>
+                        <SidebarMenuButton
+                          asChild
+                          isActive={pathname === item.href}
+                          tooltip={{ children: item.label }}
+                          className="justify-start"
+                        >
+                          <a>
+                            <item.icon className="h-5 w-5" />
+                            <span>{item.label}</span>
+                          </a>
+                        </SidebarMenuButton>
+                      </Link>
+                    </SidebarMenuItem>
+                  ))}
+                </>
+              )}
             </SidebarMenu>
           </ScrollArea>
         </SidebarContent>
         <SidebarFooter className="p-2">
-          {userId && (
+          {userProfile && (
             <div className="p-2 rounded-md bg-sidebar-accent group-data-[collapsible=icon]:p-0 group-data-[collapsible=icon]:bg-transparent">
               <div className="flex items-center gap-2 group-data-[collapsible=icon]:justify-center">
-                <UserAvatar user={{ id: userId, name: "Anonymous" }} className="h-8 w-8"/>
+                <UserAvatar user={userProfile} className="h-8 w-8"/>
                 <div className="group-data-[collapsible=icon]:hidden">
-                  <p className="text-sm font-medium text-sidebar-accent-foreground">Anonymous</p>
-                  <Badge variant="outline" className="text-xs truncate max-w-[120px]">{userId}</Badge>
+                  <p className="text-sm font-medium text-sidebar-accent-foreground">{userProfile.name}</p>
+                  <Badge variant="outline" className="text-xs truncate max-w-[120px]">{userProfile.id}</Badge>
                 </div>
               </div>
             </div>
@@ -116,12 +141,10 @@ export default function ChatLayout({ children }: { children: ReactNode }) {
         <header className="sticky top-0 z-10 flex h-14 items-center gap-4 border-b bg-background/80 px-4 backdrop-blur-sm md:px-6">
           <SidebarTrigger className="md:hidden" />
           <div className="flex-1">
-            {/* Current Page Title or Breadcrumbs could go here */}
             <h2 className="text-lg font-semibold">
-              {navItems.find(item => pathname.startsWith(item.href))?.label || APP_NAME}
+              {navItems.find(item => pathname.startsWith(item.href))?.label || creatorNavItems.find(item => pathname.startsWith(item.href))?.label || APP_NAME}
             </h2>
           </div>
-          {/* Additional header actions can go here */}
         </header>
         <main className="flex-1 overflow-auto p-4 md:p-6">
           {children}

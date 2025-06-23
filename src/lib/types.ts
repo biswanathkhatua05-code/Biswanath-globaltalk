@@ -1,10 +1,35 @@
 import type { Timestamp } from 'firebase/firestore';
 
 export interface User {
-  id: string;
+  id: string; // UID
   name?: string;
   avatarUrl?: string; // URL to placeholder or actual avatar
+  isCreator?: boolean;
 }
+
+export interface Video {
+    id: string; // Firestore document ID
+    title: string;
+    description: string;
+    videoUrl: string; // URL to the video file
+    thumbnailUrl: string;
+    creatorId: string;
+    creatorName: string;
+    creatorAvatarUrl: string;
+    views: number;
+    likes: number;
+    createdAt: Timestamp;
+}
+
+export interface Comment {
+    id: string;
+    text: string;
+    authorId: string;
+    authorName: string;
+    authorAvatarUrl: string;
+    createdAt: Timestamp;
+}
+
 
 export interface Message {
   id: string; // Firestore document ID
