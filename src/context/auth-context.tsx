@@ -34,31 +34,41 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (fbUser) => {
-      if (fbUser) {
-        // User is signed in. Fetch or create their profile in Firestore.
-        const userRef = doc(firestore, 'users', fbUser.uid);
-        const userSnap = await getDoc(userRef);
+      try {
+        if (fbUser) {
+          // User is signed in. Fetch or create their profile in Firestore.
+          const userRef = doc(firestore, 'users', fbUser.uid);
+          const userSnap = await getDoc(userRef);
 
-        if (userSnap.exists()) {
-          setUserProfile({ id: userSnap.id, ...userSnap.data() } as User);
+          if (userSnap.exists()) {
+            setUserProfile({ id: userSnap.id, ...userSnap.data() } as User);
+          } else {
+            // New user, create a default profile for them
+            const newUser: User = {
+              id: fbUser.uid,
+              name: fbUser.displayName || `User ${fbUser.uid.substring(0, 6)}`,
+              avatarUrl: fbUser.photoURL || `https://api.dicebear.com/8.x/lorelei/svg?seed=${fbUser.uid}`,
+              isCreator: false, // Default to not being a creator
+            };
+            await setDoc(userRef, newUser);
+            setUserProfile(newUser);
+          }
+          setFirebaseUser(fbUser);
         } else {
-          // New user, create a default profile for them
-          const newUser: User = {
-            id: fbUser.uid,
-            name: fbUser.displayName || `User ${fbUser.uid.substring(0, 6)}`,
-            avatarUrl: fbUser.photoURL || `https://api.dicebear.com/8.x/lorelei/svg?seed=${fbUser.uid}`,
-            isCreator: false, // Default to not being a creator
-          };
-          await setDoc(userRef, newUser);
-          setUserProfile(newUser);
+          // User is signed out
+          setFirebaseUser(null);
+          setUserProfile(null);
         }
-        setFirebaseUser(fbUser);
-      } else {
-        // User is signed out
+      } catch (error) {
+        console.error("Error during authentication state change:", error);
+        // If there's an error (e.g., Firestore permissions), log out the user
+        // to avoid being in a broken state.
         setFirebaseUser(null);
         setUserProfile(null);
+        await signOut(auth).catch(err => console.error("Sign out failed after auth error:", err));
+      } finally {
+        setIsLoadingAuth(false);
       }
-      setIsLoadingAuth(false);
     });
     return () => unsubscribe();
   }, []);
@@ -67,8 +77,10 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     setIsLoadingAuth(true);
     try {
       await signInAnonymously(auth);
+      // Auth state change will be handled by the onAuthStateChanged listener
     } catch (error) {
       console.error("Anonymous login failed:", error);
+      setIsLoadingAuth(false); // Ensure loading stops on failure too
     }
   }, []);
 
@@ -76,8 +88,10 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     setIsLoadingAuth(true);
     try {
       await signOut(auth);
+      // Auth state change will be handled by the onAuthStateChanged listener
     } catch (error) {
       console.error("Logout failed:", error);
+      setIsLoadingAuth(false); // Ensure loading stops on failure too
     }
   }, []);
 
