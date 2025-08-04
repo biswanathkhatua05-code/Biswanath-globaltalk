@@ -19,17 +19,12 @@ let firestore: Firestore;
 
 if (!getApps().length) {
   app = initializeApp(firebaseConfig);
-  console.log("Firebase App: Initialized.");
 } else {
   app = getApp(); // If already initialized, use that app
-  console.log("Firebase App: Re-using existing instance.");
 }
 
 auth = getAuth(app);
-console.log("Firebase Auth: Initialized.");
-
 firestore = getFirestore(app);
-console.log("Firebase Firestore: Initialized.");
 
 // WebRTC STUN/TURN server configuration
 const turnUrl = process.env.NEXT_PUBLIC_TURN_URL;
@@ -41,8 +36,7 @@ const iceServers = [
   { urls: ['stun:stun1.l.google.com:19302', 'stun:stun2.l.google.com:19302'] },
 ];
 
-// If TURN server credentials are provided, add them to the list.
-// This is highly recommended for production to handle various network conditions.
+// If TURN server credentials are provided from environment variables, add them to the list.
 if (turnUrl && turnUsername && turnPassword) {
   iceServers.push({
     urls: turnUrl,
@@ -51,7 +45,7 @@ if (turnUrl && turnUsername && turnPassword) {
   });
   console.log("TURN server configuration loaded for WebRTC.");
 } else {
-  console.warn("TURN server credentials not found. WebRTC calls may fail on restrictive networks.");
+  console.warn("TURN server credentials not found in environment variables. WebRTC calls may fail on restrictive networks.");
 }
 
 export const servers = {
