@@ -1,6 +1,6 @@
+
 "use client";
 import type { ReactNode } from 'react';
-import { useEffect } from 'react'; // Added useEffect import
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { AppLogo } from '@/components/app-logo';
@@ -41,13 +41,9 @@ export default function ChatLayout({ children }: { children: ReactNode }) {
   const { userId, userProfile, logout, isLoggedIn } = useAuth();
   const router = useRouter();
 
-  useEffect(() => {
-    if (!isLoggedIn) {
-      router.replace('/');
-    }
-  }, [isLoggedIn, router]);
-
   if (!isLoggedIn) {
+     // The AuthProvider already shows a loading screen and handles redirects.
+     // We can return a simple loading state here as a fallback.
      return <div className="flex min-h-screen flex-col items-center justify-center bg-background p-8">
        <p className="text-foreground">Loading session...</p>
      </div>;
