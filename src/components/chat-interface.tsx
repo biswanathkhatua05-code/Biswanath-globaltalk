@@ -268,6 +268,15 @@ export function ChatInterface({
   // Effect for the entire Video Call lifecycle
   useEffect(() => {
     if (!isCallActive || !chatId) {
+      // Clear any existing call data if the call is not active
+      if (peerConnectionRef.current) {
+        peerConnectionRef.current.close();
+        peerConnectionRef.current = null;
+      }
+      if (streamRef.current) {
+        streamRef.current.getTracks().forEach(track => track.stop());
+        streamRef.current = null;
+      }
       return;
     }
 
@@ -345,7 +354,7 @@ export function ChatInterface({
 
         const unsubAnswer = onSnapshot(callDocRef, (snapshot) => {
           const data = snapshot.data();
-          if (!pc.currentRemoteDescription && data?.answer) {
+          if (pc.signalingState !== 'closed' && !pc.currentRemoteDescription && data?.answer) {
             const answerDescription = new RTCSessionDescription(data.answer);
             pc.setRemoteDescription(answerDescription);
           }
@@ -354,7 +363,7 @@ export function ChatInterface({
 
         const unsubAnswerCandidates = onSnapshot(answerCandidatesRef, (snapshot) => {
           snapshot.docChanges().forEach((change) => {
-            if (change.type === 'added') {
+            if (change.type === 'added' && pc.signalingState !== 'closed') {
               pc.addIceCandidate(new RTCIceCandidate(change.doc.data()));
             }
           });
@@ -363,7 +372,9 @@ export function ChatInterface({
 
       } else {
         const offer = callDocSnap.data().offer;
-        await pc.setRemoteDescription(new RTCSessionDescription(offer));
+        if(offer) {
+            await pc.setRemoteDescription(new RTCSessionDescription(offer));
+        }
         
         const answerDescription = await pc.createAnswer();
         await pc.setLocalDescription(answerDescription);
@@ -373,7 +384,7 @@ export function ChatInterface({
         
         const unsubOfferCandidates = onSnapshot(offerCandidatesRef, (snapshot) => {
           snapshot.docChanges().forEach((change) => {
-            if (change.type === 'added') {
+            if (change.type === 'added' && pc.signalingState !== 'closed') {
               pc.addIceCandidate(new RTCIceCandidate(change.doc.data()));
             }
           });
@@ -410,7 +421,8 @@ export function ChatInterface({
       const cleanupFirestore = async (id: string) => {
         try {
           const callDocRef = doc(firestore, 'video_calls', id);
-          if ((await getDoc(callDocRef)).exists()) {
+          const callDocSnap = await getDoc(callDocRef);
+          if (callDocSnap.exists()) {
             const offerCandidatesRef = collection(callDocRef, 'offerCandidates');
             const answerCandidatesRef = collection(callDocRef, 'answerCandidates');
             
@@ -434,13 +446,22 @@ export function ChatInterface({
         cleanupFirestore(chatId);
       }
     };
-  }, [isCallActive, chatId, currentFacingMode, toast, handleEndCall, isCameraOff, isMicMuted]);
+  }, [isCallActive, chatId, currentFacingMode, toast, handleEndCall]);
 
 
   // Effect for the entire Voice Call lifecycle
   useEffect(() => {
     if (!isVoiceCallActive || !chatId || !currentUser) {
-      return;
+       // Cleanup logic
+        if (voiceCallPeerConnectionRef.current) {
+            voiceCallPeerConnectionRef.current.close();
+            voiceCallPeerConnectionRef.current = null;
+        }
+        if (voiceCallStreamRef.current) {
+            voiceCallStreamRef.current.getTracks().forEach(track => track.stop());
+            voiceCallStreamRef.current = null;
+        }
+        return;
     }
 
     let unsubscribers: (() => void)[] = [];
@@ -467,6 +488,7 @@ export function ChatInterface({
       const remoteS = new MediaStream();
       if (remoteAudioRef.current) {
         remoteAudioRef.current.srcObject = remoteS;
+        remoteAudioRef.current.play().catch(e => console.error("Audio play failed", e));
       }
       
       pc.ontrack = (event) => {
@@ -498,7 +520,7 @@ export function ChatInterface({
 
         const unsubAnswer = onSnapshot(callDocRef, (snapshot) => {
           const data = snapshot.data();
-          if (!pc.currentRemoteDescription && data?.answer) {
+          if (pc.signalingState !== 'closed' && !pc.currentRemoteDescription && data?.answer) {
             pc.setRemoteDescription(new RTCSessionDescription(data.answer));
           }
         });
@@ -506,13 +528,15 @@ export function ChatInterface({
 
         const unsubAnswerCandidates = onSnapshot(answerCandidatesRef, (snapshot) => {
           snapshot.docChanges().forEach((change) => {
-            if (change.type === 'added') pc.addIceCandidate(new RTCIceCandidate(change.doc.data()));
+            if (change.type === 'added' && pc.signalingState !== 'closed') pc.addIceCandidate(new RTCIceCandidate(change.doc.data()));
           });
         });
         unsubscribers.push(unsubAnswerCandidates);
       } else {
         const offer = callDocSnap.data().offer;
-        await pc.setRemoteDescription(new RTCSessionDescription(offer));
+        if (offer) {
+           await pc.setRemoteDescription(new RTCSessionDescription(offer));
+        }
         const answerDescription = await pc.createAnswer();
         await pc.setLocalDescription(answerDescription);
         const answer = { type: answerDescription.type, sdp: answerDescription.sdp };
@@ -520,7 +544,7 @@ export function ChatInterface({
 
         const unsubOfferCandidates = onSnapshot(offerCandidatesRef, (snapshot) => {
           snapshot.docChanges().forEach((change) => {
-            if (change.type === 'added') pc.addIceCandidate(new RTCIceCandidate(change.doc.data()));
+            if (change.type === 'added' && pc.signalingState !== 'closed') pc.addIceCandidate(new RTCIceCandidate(change.doc.data()));
           });
         });
         unsubscribers.push(unsubOfferCandidates);
@@ -546,7 +570,8 @@ export function ChatInterface({
       const cleanupFirestore = async (id: string) => {
         try {
           const callDocRef = doc(firestore, 'voice_calls', id);
-           if ((await getDoc(callDocRef)).exists()) {
+           const callDocSnap = await getDoc(callDocRef);
+           if (callDocSnap.exists()) {
             const offerCandidatesRef = collection(callDocRef, 'offerCandidates');
             const answerCandidatesRef = collection(callDocRef, 'answerCandidates');
             const [offerCandidatesSnap, answerCandidatesSnap] = await Promise.all([getDocs(offerCandidatesRef), getDocs(answerCandidatesRef)]);
@@ -564,80 +589,82 @@ export function ChatInterface({
         cleanupFirestore(chatId);
       }
     };
-  }, [isVoiceCallActive, chatId, currentUser, toast, handleEndVoiceCall, isVoiceCallMuted]);
+  }, [isVoiceCallActive, chatId, currentUser, toast, handleEndVoiceCall]);
 
 
 
   const toggleMic = () => {
-    if (streamRef.current) {
-      streamRef.current.getAudioTracks().forEach(track => {
-        track.enabled = !track.enabled;
-        setIsMicMuted(!track.enabled);
-      });
-    }
+    if (!streamRef.current) return;
+    streamRef.current.getAudioTracks().forEach(track => {
+      track.enabled = !isMicMuted;
+    });
+    setIsMicMuted(!isMicMuted);
   };
 
   const toggleCamera = () => {
-     if (streamRef.current) {
+     if (!streamRef.current) return;
       streamRef.current.getVideoTracks().forEach(track => {
-        track.enabled = !track.enabled;
-        setIsCameraOff(!track.enabled);
+        track.enabled = !isCameraOff;
       });
-    }
+      setIsCameraOff(!isCameraOff);
   };
 
   const handleSwitchCamera = () => {
-    setCurrentFacingMode(prevMode => prevMode === 'user' ? 'environment' : 'user');
+    setCurrentFacingMode(prevMode => {
+        const newMode = prevMode === 'user' ? 'environment' : 'user';
+        // Re-trigger the call setup effect with the new facing mode
+        // This is a simplified approach. A more advanced one would replace tracks.
+        setIsCallActive(false); 
+        setTimeout(() => setIsCallActive(true), 100);
+        return newMode;
+    });
   };
-
 
   const startRecording = async () => {
     if (!currentUser || !isLoggedIn) return;
-    if (typeof navigator.mediaDevices?.getUserMedia !== 'function') {
-      toast({ title: 'Audio Recording Not Supported', description: 'Your browser does not support audio recording.', variant: 'destructive' });
-      setMicPermissionStatus('denied'); 
-      return;
-    }
-  
     setMicPermissionStatus('pending');
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       setMicPermissionStatus('granted');
-  
-      mediaRecorderRef.current = new MediaRecorder(stream, { mimeType: 'audio/webm' });
+      
+      // Use native MediaRecorder
+      const options = { mimeType: 'audio/webm' };
+      const mediaRecorder = new MediaRecorder(stream, options);
+      mediaRecorderRef.current = mediaRecorder;
       audioChunksRef.current = [];
-  
-      mediaRecorderRef.current.ondataavailable = (event) => {
+
+      mediaRecorder.ondataavailable = (event) => {
         if (event.data.size > 0) {
           audioChunksRef.current.push(event.data);
         }
       };
-  
-      mediaRecorderRef.current.onstop = async () => {
+
+      mediaRecorder.onstop = async () => {
         const audioBlob = new Blob(audioChunksRef.current, { type: 'audio/webm' });
         const audioUrl = URL.createObjectURL(audioBlob);
-        
         await handleSendMessage("", { voiceNoteUrl: audioUrl, fileName: `Voice Note ${new Date().toLocaleTimeString()}.webm` });
         
+        // Clean up stream tracks
         stream.getTracks().forEach(track => track.stop());
+        mediaRecorderRef.current = null;
       };
-  
-      mediaRecorderRef.current.start();
+
+      mediaRecorder.start();
       setIsRecording(true);
-      toast({ title: 'Recording Started', description: 'Click the stop icon to finish.', variant: 'default' });
+      toast({ title: 'Recording Started', description: 'Recording will stop when you click the button again.', variant: 'default' });
   
     } catch (err) {
       console.error('Error accessing microphone:', err);
       setMicPermissionStatus('denied');
       toast({
         title: 'Microphone Access Denied',
-        description: 'Please enable microphone permissions in your browser settings to use this feature.',
+        description: 'Please enable microphone permissions in your browser settings.',
         variant: 'destructive',
       });
       setIsRecording(false); 
     }
   };
-
+  
   const stopRecording = () => {
     if (mediaRecorderRef.current && isRecording) {
       mediaRecorderRef.current.stop();
@@ -645,6 +672,7 @@ export function ChatInterface({
       toast({ title: 'Recording Stopped', description: 'Processing voice note...', variant: 'default' });
     }
   };
+
 
   const handleMicButtonClick = () => {
     if (isRecording) {
@@ -893,7 +921,7 @@ export function ChatInterface({
                   size="icon" 
                   type="button" 
                   onClick={handleMicButtonClick}
-                  disabled={!isLoggedIn || isModerating || showVideoCall || isRecording || micPermissionStatus === 'pending' || (micPermissionStatus === 'denied' && !isRecording) || isVoiceCallActive}
+                  disabled={!isLoggedIn || isModerating || showVideoCall || (micPermissionStatus === 'denied' && !isRecording) || isVoiceCallActive}
                 >
                   {isRecording ? <StopCircle className="h-5 w-5 text-destructive" /> : <Mic className="h-5 w-5" />}
                 </Button>
