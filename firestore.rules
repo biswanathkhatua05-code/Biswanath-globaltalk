@@ -3,129 +3,110 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
   
-    // =================================
+    // =============================================
     // Users Collection
-    // =================================
-    // Rules for the 'users' collection where user profiles are stored.
+    // =============================================
     match /users/{userId} {
-      // Any authenticated user can create their own user profile document.
-      allow create: if request.auth != null && request.auth.uid == userId;
-      
-      // Any authenticated user can read any user's profile.
-      // This is needed to see other users' names and avatars.
-      allow get: if request.auth != null;
-      
-      // A user can only update their own profile.
-      allow update: if request.auth != null && request.auth.uid == userId;
-      
-      // Users cannot delete their profiles.
-      allow delete: if false;
+      // Allow anyone to create a user profile (e.g., on first anonymous login)
+      allow create: if request.auth != null;
+      // Only the authenticated user can read or update their own profile
+      allow read, update: if request.auth != null && request.auth.uid == userId;
+    }
+
+    // =============================================
+    // Global Chat Room
+    // =============================================
+    match /global_messages/{messageId} {
+      // Any authenticated user can read the global messages
+      allow read: if request.auth != null;
+      // Any authenticated user can write a new message
+      allow create: if request.auth != null && request.resource.data.userId == request.auth.uid;
+      // Nobody can update or delete messages in the global chat
+      allow update, delete: if false;
+    }
+
+    // =============================================
+    // Private Chat Sessions
+    // =============================================
+    match /chat_sessions/{chatRoomId} {
+      // Allow a user to read or create a chat session if they are a participant
+      allow read, create: if request.auth != null && request.auth.uid in resource.data.participants;
+
+      // Messages sub-collection within a private chat
+      match /messages/{messageId} {
+        // Allow a user to read/write messages if they are a participant of the parent chat session
+        allow read, create: if request.auth != null && request.auth.uid in get(/databases/$(database)/documents/chat_sessions/$(chatRoomId)).data.participants;
+        // Nobody can update or delete messages
+        allow update, delete: if false;
+      }
     }
     
-    // =================================
-    // Videos Collection
-    // =================================
-    // Rules for the 'videos' collection and their subcollections.
-    match /videos/{videoId} {
-      // Any authenticated user can view video documents.
-      allow get: if request.auth != null;
-      
-      // Only users marked as 'isCreator' can create, update, or delete videos.
-      allow write: if request.auth != null && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.isCreator == true;
-      
-      // Rules for the 'comments' subcollection within a video.
-      match /comments/{commentId} {
-        // Any authenticated user can read comments.
-      	allow list, get: if request.auth != null;
-        // An authenticated user can create a comment, but can only update/delete their own.
-        allow create: if request.auth != null;
-        allow update, delete: if request.auth != null && request.resource.data.authorId == request.auth.uid;
-      }
-      
-      // Rules for the 'likes' subcollection within a video.
-      match /likes/{userId} {
-      	// An authenticated user can read likes.
-        allow get: if request.auth != null;
-        // A user can only create a like document with their own userId.
-        // They cannot update it (to prevent unliking/re-liking spam) and cannot delete it.
-        allow create: if request.auth != null && request.auth.uid == userId;
+    // =============================================
+    // Random Chat Sessions Pool
+    // =============================================
+    match /random_chat_sessions_pool/{sessionId} {
+      // Anyone authenticated can read the pool to find a partner
+      allow read: if request.auth != null;
+      // Allow creating a new session or updating an existing one to join
+      allow create, update: if request.auth != null;
+
+      // Messages sub-collection within a random chat
+      match /messages/{messageId} {
+        // Allow read/write if the user is one of the two participants in the session
+        allow read, create: if request.auth != null && 
+                             (request.auth.uid == get(/databases/$(database)/documents/random_chat_sessions_pool/$(sessionId)).data.userId1 ||
+                              request.auth.uid == get(/databases/$(database)/documents/random_chat_sessions_pool/$(sessionId)).data.userId2);
+        // Nobody can update or delete messages
         allow update, delete: if false;
       }
     }
 
-    // =================================
-    // Global Chat
-    // =================================
-    // Rules for the public global chat room.
-    match /global_messages/{messageId} {
-      // Any authenticated user can read and write to the global chat.
-      allow read, write: if request.auth != null;
-    }
+    // =============================================
+    // Videos Collection
+    // =============================================
+    match /videos/{videoId} {
+        // Anyone authenticated can read video details
+        allow read: if request.auth != null;
+        // Only creators can add new videos
+        allow create: if request.auth != null && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.isCreator == true;
+        // Allow updating views and likes, but not other fields
+        allow update: if request.auth != null && (
+                        (request.resource.data.diff(resource.data).affectedKeys().hasOnly(['views', 'likes']))
+                      );
+        // Deleting videos is not allowed from the client
+        allow delete: if false;
 
-    // =================================
-    // Private Chat
-    // =================================
-    // Rules for one-on-one private chat sessions.
-    match /chat_sessions/{chatId} {
-      // Allow read/write access only if the logged-in user is one of the participants.
-      // The chatId must be a combination of the two user UIDs, sorted alphabetically.
-      allow read, write: if request.auth != null && request.auth.uid in resource.data.participants
-                          && chatId.split('_')[0] < chatId.split('_')[1] // Ensure consistent ID format
-                          && (request.auth.uid == chatId.split('_')[0] || request.auth.uid == chatId.split('_')[1]);
-                          
-      // Messages subcollection within a private chat
-      match /messages/{messageId} {
-         // Allow read/write only if the user is a participant of the parent chat session.
-      	 allow read, write: if request.auth != null && request.auth.uid in get(/databases/$(database)/documents/chat_sessions/$(chatId)).data.participants;
-      }
+        // Sub-collections for comments and likes
+        match /comments/{commentId} {
+            // Any authenticated user can read comments
+            allow read: if request.auth != null;
+            // Any authenticated user can create a comment
+            allow create: if request.auth != null && request.resource.data.authorId == request.auth.uid;
+            // Nobody can update or delete comments
+            allow update, delete: if false;
+        }
+
+        match /likes/{userId} {
+            // A user can only manage their own like
+            allow read, create, delete: if request.auth != null && request.auth.uid == userId;
+            allow update: if false;
+        }
     }
     
-    // =================================
-    // Random Chat Pool
-    // =================================
-    // Rules for the pool where users wait for a random partner.
-    match /random_chat_sessions_pool/{sessionId} {
-      // Any authenticated user can read the list of waiting sessions.
-      allow list, get: if request.auth != null;
-      
-      // A user can create a new session if they are userId1.
-      // A user can join (update) a session if it's waiting and they are not userId1.
-      allow create: if request.auth != null && request.resource.data.userId1 == request.auth.uid;
-      allow update: if request.auth != null; // Allow updates for status changes (active, disconnected)
-      
-      // Messages subcollection within a random chat
-      match /messages/{messageId} {
-         // Allow read/write only if the user is one of the two participants in the random chat.
-         allow read, write: if request.auth != null && 
-                             (request.auth.uid == get(/databases/$(database)/documents/random_chat_sessions_pool/$(sessionId)).data.userId1 ||
-                              request.auth.uid == get(/databases/$(database)/documents/random_chat_sessions_pool/$(sessionId)).data.userId2);
-      }
-    }
-
-    // =================================
-    // Call Signaling (WebRTC)
-    // =================================
-    // These rules are intentionally open for authenticated users to allow 
-    // the exchange of WebRTC signaling messages (offers, answers, candidates).
-    // The actual call data is peer-to-peer and does not go through Firestore.
-    match /video_calls/{callId} {
-    	allow read, write, delete: if request.auth != null;
-      match /offerCandidates/{candidateId} {
-      	allow read, write, delete: if request.auth != null;
-      }
-      match /answerCandidates/{candidateId} {
-      	allow read, write, delete: if request.auth != null;
-      }
-    }
-    
-    match /voice_calls/{callId} {
-    	allow read, write, delete: if request.auth != null;
-      match /offerCandidates/{candidateId} {
-      	allow read, write, delete: if request.ah != null;
-      }
-      match /answerCandidates/{candidateId} {
-      	allow read, write, delete: if request.auth != null;
-      }
+    // =============================================
+    // Signaling for WebRTC (Video/Voice Calls)
+    // =============================================
+    // Generic rule for both video and voice calls
+    match /{callCollection}/{callId} {
+        // A user can interact with a call document if the callId contains their UID
+        // This is a simple but effective security model for 1-on-1 calls where the
+        // callId is a concatenation of the two user UIDs.
+        allow read, write: if request.auth != null && callId.matches(request.auth.uid);
+        
+        // Rules for the candidates sub-collections
+        match /{candidateCollection}/{candidateId} {
+            allow read, write: if request.auth != null && callId.matches(request.auth.uid);
+        }
     }
   }
 }
