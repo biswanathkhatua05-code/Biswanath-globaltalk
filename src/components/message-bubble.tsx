@@ -4,26 +4,27 @@ import { cn } from '@/lib/utils';
 import { UserAvatar } from './user-avatar';
 import { AlertTriangle, CheckCircle, Clock, Paperclip, Mic } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
-import { Timestamp } from 'firebase/firestore';
-import { FieldValue } from 'firebase/firestore';
+import { Timestamp, FieldValue } from 'firebase/firestore';
 
-interface MessageBubbleProps {
-  message: Message;
+
+function formatDisplayTime(timestamp: Timestamp | FieldValue | number): string {
+    if (timestamp instanceof FieldValue) {
+      return 'Sending...';
+    }
+  
+    let date: Date;
+    if (timestamp instanceof Timestamp) {
+      date = timestamp.toDate();
+    } else if (typeof timestamp === 'number') {
+      date = new Date(timestamp);
+    } else {
+        // Fallback for any other unexpected type
+      return 'Invalid date';
+    }
+  
+    return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 }
 
-function formatTimestamp(timestamp: Timestamp | number | FieldValue): string {
-  // Handle FieldValue specifically
-  if (timestamp instanceof FieldValue) {
- return 'Sending...';
-  }
-  if (timestamp instanceof Timestamp) {
-    return timestamp.toDate().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-  } else if (typeof timestamp === 'number') {
-    return new Date(timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-  }
-  // Handle FieldValue specifically
- return 'Invalid date';
-}
 
 export function MessageBubble({ message }: MessageBubbleProps) {
   const isSender = message.isSender;
@@ -85,7 +86,7 @@ export function MessageBubble({ message }: MessageBubbleProps) {
         )}
         <div className={cn("mt-1.5 flex items-center gap-1", isSender ? "justify-end" : "justify-start")}>
           <span className="text-xs opacity-70">
-            {formatTimestamp(message.timestamp)}
+            {formatDisplayTime(message.timestamp)}
           </span>
           {isSender && renderStatusIcon()}
         </div>
