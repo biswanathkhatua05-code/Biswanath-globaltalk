@@ -1,106 +1,94 @@
 
 rules_version = '2';
+
 service cloud.firestore {
   match /databases/{database}/documents {
 
-    // Helper functions
+    // Helper function to check if the user is signed in
     function isSignedIn() {
       return request.auth != null;
     }
 
-    function isUser(userId) {
-      return isSignedIn() && request.auth.uid == userId;
+    // Helper function to check if the user is the owner of a document
+    function isOwner(userId) {
+      return request.auth.uid == userId;
     }
     
+    // Helper function to check if a user is a designated Creator
     function isCreator() {
-      // Check if the user document exists and the isCreator field is true
-      return isSignedIn() && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.isCreator == true;
+      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data.isCreator == true;
     }
 
-    // USERS
-    // Users can read any profile.
-    // Users can only create or update their OWN profile document.
+    // User Profiles: /users/{userId}
     match /users/{userId} {
+      // Any signed-in user can view a user's profile.
       allow read: if isSignedIn();
-      allow create, update: if isUser(userId);
+      // Only the authenticated owner can create or update their own profile.
+      allow write: if isOwner(userId);
     }
 
-    // GLOBAL MESSAGES
-    // Anyone signed in can read.
-    // Anyone signed in can write, but only as themselves.
+    // Global Chat Messages: /global_messages/{messageId}
     match /global_messages/{messageId} {
       allow read: if isSignedIn();
+      // A signed-in user can create a message, but must be the author.
       allow create: if isSignedIn() && request.resource.data.userId == request.auth.uid;
+      // No one can update or delete global messages to maintain chat history.
+      allow update, delete: if false;
     }
 
-    // PRIVATE CHAT SESSIONS
-    // Only participants can read/write messages. The session ID is a composite key "uid1_uid2"
-    match /chat_sessions/{sessionId}/messages/{messageId} {
-        function isPrivateChatParticipant() {
-            return isSignedIn() && request.auth.uid in sessionId.split('_');
-        }
-        allow read, write: if isPrivateChatParticipant();
-    }
-    
-    // RANDOM CHAT
+    // Random Chat Sessions: /random_chat_sessions_pool/{sessionId}
     match /random_chat_sessions_pool/{sessionId} {
-        allow list: if isSignedIn(); 
-        allow create: if isSignedIn() && request.resource.data.userId1 == request.auth.uid;
-        allow get: if isSignedIn() && (
-            resource.data.userId1 == request.auth.uid || 
-            (resource.data.userId2 != null && resource.data.userId2 == request.auth.uid)
-        );
-        allow update: if isSignedIn() && (
-            (request.resource.data.userId2 == request.auth.uid && resource.data.userId2 == null) || 
-            (resource.data.userId1 == request.auth.uid || (resource.data.userId2 != null && resource.data.userId2 == request.auth.uid))
-        );
+      allow read: if isSignedIn();
+      // Allow creating a new session or updating an existing one (e.g., joining or disconnecting).
+      allow write: if isSignedIn();
+
+      // Messages within a random chat session
+      match /messages/{messageId} {
+        // Participants can read and write messages in their own chat.
+        allow read, write: if isSignedIn() && (request.auth.uid == get(/databases/$(database)/documents/random_chat_sessions_pool/$(sessionId)).data.userId1 || request.auth.uid == get(/databases/$(database)/documents/random_chat_sessions_pool/$(sessionId)).data.userId2);
+      }
     }
     
-    match /random_chat_sessions_pool/{sessionId}/messages/{messageId} {
-        function isRandomChatParticipant() {
-            let session = get(/databases/$(database)/documents/random_chat_sessions_pool/$(sessionId)).data;
-            return isSignedIn() && (
-                session.userId1 == request.auth.uid ||
-                (session.userId2 != null && session.userId2 == request.auth.uid)
-            );
+    // Private Chat Sessions: /chat_sessions/{sessionId}
+    match /chat_sessions/{sessionId} {
+      // Only participants involved in the chat can access it.
+      // The session ID is a composite of sorted UIDs, so we check if the user's UID is in the session ID.
+      allow read, write: if isSignedIn() && request.auth.uid in resource.id.split('_');
+
+        // Messages within a private chat session
+        match /messages/{messageId} {
+            allow read, write: if isSignedIn() && request.auth.uid in resource.id.split('_');
         }
-        allow read, write: if isRandomChatParticipant();
     }
 
-    // VIDEOS PLATFORM
+    // Video Platform Content: /videos/{videoId}
     match /videos/{videoId} {
       allow read: if isSignedIn();
       allow create: if isCreator();
-      allow update: if isSignedIn() && resource.data.creatorId == request.auth.uid;
-      
-      match /likes/{userId} {
-        allow read: if isSignedIn();
-        allow create: if isUser(userId);
-        allow delete: if isUser(userId);
-      }
-      
+      allow update, delete: if isSignedIn() && get(/databases/$(database)/documents/videos/$(videoId)).data.creatorId == request.auth.uid;
+
+      // Comments on a video
       match /comments/{commentId} {
         allow read: if isSignedIn();
         allow create: if isSignedIn() && request.resource.data.authorId == request.auth.uid;
+        allow update, delete: if false;
+      }
+      
+      // Likes on a video
+      match /likes/{userId} {
+        allow read: if isSignedIn();
+        allow create: if isOwner(userId);
+        allow update, delete: if false;
       }
     }
     
-    // WEBRTC SIGNALING
-    function isCallParticipant(callId) {
-        // callId is expected to be 'uid1_uid2'
-        return isSignedIn() && request.auth.uid in callId.split('_');
-    }
-
+    // WebRTC Signaling for Video/Voice Calls
     match /video_calls/{callId} {
-        allow read, write, delete: if isCallParticipant(callId);
-        match /offerCandidates/{candidateId} { allow read, create: if isCallParticipant(callId); }
-        match /answerCandidates/{candidateId} { allow read, create: if isCallParticipant(callId); }
+        allow read, write, delete: if isSignedIn();
     }
 
     match /voice_calls/{callId} {
-        allow read, write, delete: if isCallParticipant(callId);
-        match /offerCandidates/{candidateId} { allow read, create: if isCallParticipant(callId); }
-        match /answerCandidates/{candidateId} { allow read, create: if isCallParticipant(callId); }
+        allow read, write, delete: if isSignedIn();
     }
   }
 }
