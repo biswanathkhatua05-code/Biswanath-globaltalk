@@ -16,7 +16,7 @@ To get the application running locally, follow these steps:
     npm run dev
     ```
 
-The application will be available at `http://localhost:9003`.
+The application will be available at `http://localhost:9004`. Note that the development URL provided by your cloud environment is for your use only and cannot be shared. To share the app, you must deploy it to a hosting service like Vercel or Firebase Hosting.
 
 ---
 
@@ -33,10 +33,10 @@ Your application needs to connect to your Firebase project. This is done via env
 
 ### Step 2: Publish Firestore Security Rules
 
-Security rules protect your database from unauthorized access.
+Security rules protect your database from unauthorized access. This is the most critical step to fix permission errors.
 
 -   **Action:** Go to your **Firebase Console > Cloud Firestore > Rules** tab. Copy the entire content of the `firestore.rules` file from this project and paste it into the editor, overwriting any existing rules. Click **Publish**.
--   **Why:** Incorrect or default rules will cause "Missing or insufficient permissions" errors, preventing the app from reading or writing data.
+-   **Why:** Incorrect or default rules will cause "Missing or insufficient permissions" errors, preventing the app from reading or writing data for chats, user profiles, and videos.
 
 ### Step 3: Create a "Creator" User Account
 
