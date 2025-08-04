@@ -5,18 +5,24 @@ import { UserAvatar } from './user-avatar';
 import { AlertTriangle, CheckCircle, Clock, Paperclip, Mic } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Timestamp } from 'firebase/firestore';
+import { FieldValue } from 'firebase/firestore';
 
 interface MessageBubbleProps {
   message: Message;
 }
 
-function formatTimestamp(timestamp: Timestamp | number): string {
+function formatTimestamp(timestamp: Timestamp | number | FieldValue): string {
+  // Handle FieldValue specifically
+  if (timestamp instanceof FieldValue) {
+ return 'Sending...';
+  }
   if (timestamp instanceof Timestamp) {
     return timestamp.toDate().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
   } else if (typeof timestamp === 'number') {
     return new Date(timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
   }
-  return 'Invalid date';
+  // Handle FieldValue specifically
+ return 'Invalid date';
 }
 
 export function MessageBubble({ message }: MessageBubbleProps) {

@@ -1,6 +1,6 @@
 // src/lib/firebase.ts
 import { initializeApp, getApps, getApp, type FirebaseApp } from 'firebase/app';
-import { getAuth, type Auth } from 'firebase/auth';
+import { getAuth, type Auth, User } from 'firebase/auth';
 import { getFirestore, type Firestore } from 'firebase/firestore';
 
 const firebaseConfig = {
@@ -31,7 +31,7 @@ const turnUrl = process.env.NEXT_PUBLIC_TURN_URL;
 const turnUsername = process.env.NEXT_PUBLIC_TURN_USERNAME;
 const turnPassword = process.env.NEXT_PUBLIC_TURN_PASSWORD;
 
-const iceServers = [
+const iceServers: RTCIceServer[] = [
   // Default STUN servers from Google
   { urls: ['stun:stun1.l.google.com:19302', 'stun:stun2.l.google.com:19302'] },
 ];
@@ -39,7 +39,7 @@ const iceServers = [
 // If TURN server credentials are provided from environment variables, add them to the list.
 if (turnUrl && turnUsername && turnPassword) {
   iceServers.push({
-    urls: turnUrl,
+    urls: [turnUrl],
     username: turnUsername,
     credential: turnPassword,
   });
