@@ -1,89 +1,91 @@
-# GlobaTalk Lite - A Next.js Project
+# GlobaTalk Lite - Ek Next.js Project
 
-This is a Next.js starter project for GlobaTalk Lite, an application built with Firebase, Next.js, and Genkit.
+Yeh GlobaTalk Lite ka ek Next.js starter project hai, jo Firebase, Next.js, aur Genkit se bana hai.
 
-## Getting Started (Local Development)
+---
 
-To get the application running locally in your development environment, follow these steps:
+## Apne Computer Par Kaise Chalayein (Local Development)
 
-1.  **Install dependencies:**
+Application ko apne development environment mein locally chalaane ke liye, yeh steps follow karein:
+
+1.  **Dependencies Install Karein:**
     ```bash
     npm install
     ```
 
-2.  **Set up your environment variables:**
-    *   Rename the `.env.example` file to `.env`.
-    *   Fill in the `NEXT_PUBLIC_FIREBASE_*` variables in the `.env` file with your Firebase project's configuration. You can find these in your **Firebase Console > Project Settings > General > Your apps > Firebase SDK snippet > Config**.
+2.  **Apne Environment Variables Set Karein:**
+    *   `.env.example` file ka naam badal kar `.env` kar dein.
+    *   `.env` file mein `NEXT_PUBLIC_FIREBASE_*` waali saari jaankari apne Firebase project ke configuration se bharein. Yeh aapko **Firebase Console > Project Settings > General > Your apps > Firebase SDK snippet > Config** mein milega.
 
-3.  **Run the development server:**
+3.  **Development Server Shuru Karein:**
     ```bash
     npm run dev
     ```
 
-The application will be available at the URL provided by your development environment (e.g., `http://localhost:9004`).
+Application aapke development environment dwara diye gaye URL par uplabdh ho jaayega (jaise, `http://localhost:9004`).
 
 ---
 
-## 🚀 Deployment Guide (Vercel)
+## 🚀 Deployment Guide (Vercel par live kaise karein)
 
-To deploy your application and get a public URL to share with friends, follow these steps carefully.
+Apne application ko deploy karke ek public URL paane ke liye jise aap doston ke saath share kar sakein, in steps ko dhyan se follow karein.
 
-### Step 1: Push Your Code to GitHub
+### Step 1: Apna Code GitHub Par Daalein
 
-1.  Create a new repository on [GitHub](https://github.com/new).
-2.  Follow the instructions on GitHub to push your local project code to the new repository.
+1.  [GitHub](https://github.com/new) par ek nayi repository banayein.
+2.  GitHub par diye gaye instructions ko follow karke apne local project code ko us nayi repository mein push karein.
 
-### Step 2: Deploy with Vercel
+### Step 2: Vercel Se Deploy Karein
 
-1.  Go to [Vercel](https://vercel.com/new) and sign up with your GitHub account.
-2.  Click **Import Project** and select your new GitHub repository.
-3.  Vercel will automatically detect that you're using Next.js and configure the build settings.
+1.  [Vercel](https://vercel.com/new) par jaayein aur apne GitHub account se sign up karein.
+2.  **Import Project** par click karein aur apni nayi GitHub repository ko select karein.
+3.  Vercel apne aap detect kar lega ki aap Next.js istemal kar rahe hain aur build settings ko configure kar dega.
 
-### Step 3: Configure Environment Variables
+### Step 3: Environment Variables Configure Karein (Sabse Zaroori Step)
 
-This is the most important step for the deployed app to work.
+Yeh deploy kiye gaye app ke kaam karne ke liye sabse zaroori step hai.
 
-1.  In the Vercel project dashboard, go to the **Settings** tab.
-2.  Click on **Environment Variables** in the side menu.
-3.  For each variable in your `.env` file (e.g., `NEXT_PUBLIC_FIREBASE_API_KEY`), create a new environment variable in Vercel.
+1.  Vercel project dashboard mein, **Settings** tab par jaayein.
+2.  Side menu mein **Environment Variables** par click karein.
+3.  Aapki `.env.example` file mein jitne bhi variables hain (jaise, `NEXT_PUBLIC_FIREBASE_API_KEY`), un sab ke liye Vercel mein ek naya environment variable banayein.
     *   **Name:** `NEXT_PUBLIC_FIREBASE_API_KEY`
-    *   **Value:** `your-actual-api-key`
-4.  Repeat this process for all `NEXT_PUBLIC_FIREBASE_*` variables.
-5.  If you have a TURN server, add those variables as well (`NEXT_PUBLIC_TURN_URL`, etc.).
+    *   **Value:** `your-actual-api-key` (yahan apni asli key daalein)
+4.  Isi tarah se saare `NEXT_PUBLIC_FIREBASE_*` variables ke liye repeat karein.
+5.  Agar aapke paas TURN server hai, toh unke variables bhi add karein (`NEXT_PUBLIC_TURN_URL`, etc.).
 
-### Step 4: Deploy
+### Step 4: Deploy Karein
 
-1.  After adding the environment variables, go to the **Deployments** tab.
-2.  Trigger a new deployment. Vercel will build and deploy your project.
-3.  Once finished, you will get a public URL (e.g., `your-project-name.vercel.app`) that you can share with anyone!
+1.  Environment variables add karne ke baad, **Deployments** tab par jaayein.
+2.  Ek naya deployment trigger karein. Vercel aapke project ko build aur deploy karega.
+3.  Jab yeh poora ho jaayega, aapko ek public URL milega (jaise, `your-project-name.vercel.app`) jise aap kisi ke bhi saath share kar sakte hain!
 
 ---
 
-## 🔥 Pre-Launch Firebase Checklist 🔥
+## 🔥 App Live Karne Se Pehle Firebase Checklist 🔥
 
-Before you share your deployed app link, ensure your Firebase backend is correctly configured. **This is critical to avoid permission errors.**
+Apne deployed app ka link share karne se pehle, yeh sunishchit karein ki aapka Firebase backend sahi tarah se configure kiya gaya hai. **Permission errors se bachne ke liye yeh bahut zaroori hai.**
 
-### ✅ 1. Publish Firestore Security Rules
+### ✅ 1. Firestore Security Rules Publish Karein
 
-1.  Go to your **Firebase Console > Cloud Firestore > Rules** tab.
-2.  Copy the entire content of the `firestore.rules` file from this project and paste it into the editor, overwriting any existing rules.
-3.  Click **Publish**.
+1.  Apne **Firebase Console > Cloud Firestore > Rules** tab par jaayein.
+2.  Is project mein di gayi `firestore.rules` file ka poora content copy karein aur use editor mein paste kar dein, pehle se likhe hue rules ko hata kar.
+3.  **Publish** par click karein.
 
-### ✅ 2. Create a "Creator" User Account (Optional)
+### ✅ 2. Ek "Creator" User Account Banayein (Optional)
 
-Certain features, like uploading videos, are restricted to users with a `creator` role.
+Kuch features, jaise video upload karna, sirf `creator` role waale users ke liye hain.
 
-1.  Run the deployed app and log in anonymously.
-2.  Go to the **Firebase Console > Cloud Firestore > Data** tab.
-3.  Open the `users` collection and find the document with your User ID.
-4.  Add a new field:
+1.  Apne deployed app ko chalaayein aur anonymously log in karein.
+2.  **Firebase Console > Cloud Firestore > Data** tab par jaayein.
+3.  `users` collection ko kholein aur apni User ID waala document dhoondein.
+4.  Ek nayi field add karein:
     *   **Field:** `isCreator`
     *   **Type:** `boolean`
     *   **Value:** `true`
 
-### ✅ 3. Configure a TURN Server (Recommended)
+### ✅ 3. Ek TURN Server Configure Karein (Recommended)
 
-For reliable video/voice calls across all networks, a TURN server is highly recommended.
+Sabhi networks par bharosemand video/voice calls ke liye, ek TURN server ka istemal karna zaroori hai.
 
-1.  Obtain TURN server credentials from a service like Twilio.
-2.  Add the URL, username, and password to the Environment Variables in your Vercel project settings.
+1.  Twilio jaisi service se TURN server credentials prapt karein.
+2.  URL, username, aur password ko apne Vercel project ki settings mein Environment Variables mein add karein.
