@@ -1,3 +1,4 @@
+
 import type { Timestamp, FieldValue } from 'firebase/firestore';
 
 export interface User {
@@ -18,7 +19,7 @@ export interface Video {
     creatorAvatarUrl: string;
     views: number;
     likes: number;
-    createdAt: Timestamp;
+    createdAt: Timestamp | FieldValue;
 }
 
 export interface Comment {
@@ -27,14 +28,14 @@ export interface Comment {
     authorId: string;
     authorName: string;
     authorAvatarUrl: string;
-    createdAt: Timestamp;
+    createdAt: Timestamp | FieldValue;
 }
 
 
 export interface Message {
   id: string; // Firestore document ID
   text: string;
-  timestamp: Timestamp | number | FieldValue; // Firestore Timestamp or client-side number before conversion
+  timestamp: Timestamp | FieldValue;
   user: User; // Simplified user object, consider storing only userId in Firestore and denormalizing if needed
   userId: string; // Store userId directly for easier querying
   isSender: boolean; // True if the current user sent this message (client-side only)

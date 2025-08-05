@@ -7,18 +7,15 @@ import { Badge } from '@/components/ui/badge';
 import { Timestamp, FieldValue } from 'firebase/firestore';
 
 
-function formatDisplayTime(timestamp: Timestamp | FieldValue | number): string {
-    if (timestamp instanceof FieldValue) {
-      return 'Sending...';
+function formatDisplayTime(timestamp: Timestamp | FieldValue): string {
+    if (!(timestamp instanceof Timestamp)) {
+      // If it's a serverTimestamp, it hasn't been set by the server yet.
+      // If it's any other FieldValue, we also show 'sending'.
+      return 'sending...';
     }
   
-    let date: Date;
-    if (timestamp instanceof Timestamp) {
-      date = timestamp.toDate();
-    } else if (typeof timestamp === 'number') {
-      date = new Date(timestamp);
-    } else {
-        // Fallback for any other unexpected type
+    const date: Date = timestamp.toDate();
+    if (isNaN(date.getTime())) {
       return 'Invalid date';
     }
   
@@ -26,7 +23,7 @@ function formatDisplayTime(timestamp: Timestamp | FieldValue | number): string {
 }
 
 
-export function MessageBubble({ message }: MessageBubbleProps) {
+export function MessageBubble({ message }: { message: Message }) {
   const isSender = message.isSender;
 
   const renderStatusIcon = () => {
