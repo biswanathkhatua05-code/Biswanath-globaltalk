@@ -66,14 +66,15 @@ export default function ChatLayout({ children }: { children: ReactNode }) {
               {navItems.map((item) => (
                 <SidebarMenuItem key={item.href}>
                   <SidebarMenuButton
-                    as={Link}
-                    href={item.href}
+                    asChild
                     isActive={pathname === item.href || pathname.startsWith(`${item.href}/`)}
                     tooltip={{ children: item.label }}
                     className="justify-start"
                   >
-                    <item.icon className="h-5 w-5" />
-                    <span>{item.label}</span>
+                    <Link href={item.href}>
+                      <item.icon className="h-5 w-5" />
+                      <span>{item.label}</span>
+                    </Link>
                   </SidebarMenuButton>
                 </SidebarMenuItem>
               ))}
@@ -84,14 +85,15 @@ export default function ChatLayout({ children }: { children: ReactNode }) {
                   {creatorNavItems.map((item) => (
                     <SidebarMenuItem key={item.href}>
                        <SidebarMenuButton
-                          as={Link}
-                          href={item.href}
+                          asChild
                           isActive={pathname === item.href}
                           tooltip={{ children: item.label }}
                           className="justify-start"
                         >
-                          <item.icon className="h-5 w-5" />
-                          <span>{item.label}</span>
+                          <Link href={item.href}>
+                            <item.icon className="h-5 w-5" />
+                            <span>{item.label}</span>
+                          </Link>
                       </SidebarMenuButton>
                     </SidebarMenuItem>
                   ))}
