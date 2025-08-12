@@ -65,19 +65,16 @@ export default function ChatLayout({ children }: { children: ReactNode }) {
             <SidebarMenu className="p-2">
               {navItems.map((item) => (
                 <SidebarMenuItem key={item.href}>
-                  <Link href={item.href} legacyBehavior passHref>
-                    <SidebarMenuButton
-                      asChild
-                      isActive={pathname === item.href || pathname.startsWith(`${item.href}/`)}
-                      tooltip={{ children: item.label }}
-                      className="justify-start"
-                    >
-                      <a>
-                        <item.icon className="h-5 w-5" />
-                        <span>{item.label}</span>
-                      </a>
-                    </SidebarMenuButton>
-                  </Link>
+                  <SidebarMenuButton
+                    as={Link}
+                    href={item.href}
+                    isActive={pathname === item.href || pathname.startsWith(`${item.href}/`)}
+                    tooltip={{ children: item.label }}
+                    className="justify-start"
+                  >
+                    <item.icon className="h-5 w-5" />
+                    <span>{item.label}</span>
+                  </SidebarMenuButton>
                 </SidebarMenuItem>
               ))}
 
@@ -86,19 +83,16 @@ export default function ChatLayout({ children }: { children: ReactNode }) {
                   <SidebarSeparator className="my-2" />
                   {creatorNavItems.map((item) => (
                     <SidebarMenuItem key={item.href}>
-                      <Link href={item.href} legacyBehavior passHref>
-                        <SidebarMenuButton
-                          asChild
+                       <SidebarMenuButton
+                          as={Link}
+                          href={item.href}
                           isActive={pathname === item.href}
                           tooltip={{ children: item.label }}
                           className="justify-start"
                         >
-                          <a>
-                            <item.icon className="h-5 w-5" />
-                            <span>{item.label}</span>
-                          </a>
-                        </SidebarMenuButton>
-                      </Link>
+                          <item.icon className="h-5 w-5" />
+                          <span>{item.label}</span>
+                      </SidebarMenuButton>
                     </SidebarMenuItem>
                   ))}
                 </>
