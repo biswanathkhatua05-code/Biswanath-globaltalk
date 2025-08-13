@@ -29,63 +29,62 @@ export default function VideoWatchPage() {
   const [comments, setComments] = useState<Comment[]>([]);
   const [recommended, setRecommended] = useState<Video[]>([]);
   const [isLoading, setIsLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
 
   const [newComment, setNewComment] = useState("");
   const [isSubmittingComment, setIsSubmittingComment] = useState(false);
 
   // Fetch video, comments, and recommended videos
-  useEffect(() => {
-    const fetchAllData = async () => {
-      setIsLoading(true);
-      setError(null);
-      try {
-        // Fetch main video
-        const videoRef = doc(firestore, 'videos', videoId);
-        const videoSnap = await getDoc(videoRef);
+  const fetchAllData = useCallback(async () => {
+    if (!videoId || !isLoggedIn) return;
+    
+    setIsLoading(true);
+    try {
+      // Fetch main video
+      const videoRef = doc(firestore, 'videos', videoId);
+      const videoSnap = await getDoc(videoRef);
 
-        if (!videoSnap.exists()) {
-          throw new Error("Video not found.");
-        }
-        const videoData = { id: videoSnap.id, ...videoSnap.data() } as Video;
-        setVideo(videoData);
-
-        // Increment views
-        await runTransaction(firestore, async (transaction) => {
-            transaction.update(videoRef, { views: increment(1) });
-        });
-
-        // Fetch comments
-        const commentsRef = collection(firestore, `videos/${videoId}/comments`);
-        const commentsQuery = query(commentsRef, orderBy('createdAt', 'desc'));
-        const commentsSnap = await getDocs(commentsQuery);
-        const fetchedComments = commentsSnap.docs.map(doc => ({ id: doc.id, ...doc.data() } as Comment));
-        setComments(fetchedComments);
-        
-        // Fetch recommended videos (excluding the current one)
-        const recommendedRef = collection(firestore, 'videos');
-        const recommendedQuery = query(recommendedRef, limit(10));
-        const recommendedSnap = await getDocs(recommendedQuery);
-        const fetchedRecommended = recommendedSnap.docs
-            .map(doc => ({ id: doc.id, ...doc.data() } as Video))
-            .filter(v => v.id !== videoId);
-        setRecommended(fetchedRecommended);
-
-      } catch (err) {
-        console.error("Error fetching video data:", err);
-        setError(err instanceof Error ? err.message : "Failed to load video data.");
-      } finally {
-        setIsLoading(false);
+      if (!videoSnap.exists()) {
+        throw new Error("Video not found. It may have been deleted or the link is incorrect.");
       }
-    };
+      const videoData = { id: videoSnap.id, ...videoSnap.data() } as Video;
+      setVideo(videoData);
 
-    if (isLoggedIn && videoId) {
-      fetchAllData();
-    } else if (!isLoggedIn) {
-      // Don't fetch, wait for auth state to resolve. The global loading screen will show.
-      setIsLoading(true);
+      // Increment views
+      await runTransaction(firestore, async (transaction) => {
+          transaction.update(videoRef, { views: increment(1) });
+      });
+
+      // Fetch comments
+      const commentsRef = collection(firestore, `videos/${videoId}/comments`);
+      const commentsQuery = query(commentsRef, orderBy('createdAt', 'desc'));
+      const commentsSnap = await getDocs(commentsQuery);
+      const fetchedComments = commentsSnap.docs.map(doc => ({ id: doc.id, ...doc.data() } as Comment));
+      setComments(fetchedComments);
+      
+      // Fetch recommended videos (excluding the current one)
+      const recommendedRef = collection(firestore, 'videos');
+      const recommendedQuery = query(recommendedRef, limit(10));
+      const recommendedSnap = await getDocs(recommendedQuery);
+      const fetchedRecommended = recommendedSnap.docs
+          .map(doc => ({ id: doc.id, ...doc.data() } as Video))
+          .filter(v => v.id !== videoId);
+      setRecommended(fetchedRecommended);
+
+    } catch (err) {
+      console.error("Error fetching video data:", err);
+      // Re-throwing the error to be caught by the nearest error.tsx boundary
+      throw err;
+    } finally {
+      setIsLoading(false);
     }
   }, [videoId, isLoggedIn]);
+
+
+  useEffect(() => {
+    if (isLoggedIn) {
+      fetchAllData();
+    }
+  }, [isLoggedIn, fetchAllData]);
   
   const handlePostComment = async () => {
     if (!newComment.trim() || !userProfile || !isLoggedIn) {
@@ -138,8 +137,7 @@ export default function VideoWatchPage() {
   }
 
   if (isLoading) return <LoadingSkeleton />;
-  if (error) return <div className="text-center py-10 text-destructive">{error}</div>;
-  if (!video) return null;
+  if (!video) return null; // This case should ideally be handled by the loading skeleton or error boundary
 
   const postedDate = video.createdAt ? formatDistanceToNow(video.createdAt.toDate(), { addSuffix: true }) : '...';
 
