@@ -19,7 +19,7 @@ import {
   SidebarInset,
   SidebarSeparator
 } from '@/components/ui/sidebar';
-import { Users, Shuffle, Search, LogOut, Settings, UserCircle, MessageSquareMore, Youtube, UploadCloud } from 'lucide-react';
+import { Users, Shuffle, Search, LogOut, Settings, UserCircle, MessageSquareMore } from 'lucide-react';
 import { useAuth } from '@/context/auth-context';
 import { UserAvatar } from '@/components/user-avatar';
 import { Badge } from '@/components/ui/badge';
@@ -29,12 +29,7 @@ const navItems = [
   { href: '/chat/random', label: 'Random Chat', icon: Shuffle },
   { href: '/chat/global', label: 'Global Messages', icon: Users },
   { href: '/chat/find', label: 'Find Friends', icon: Search },
-  { href: '/chat/youtube', label: 'Videos', icon: Youtube },
 ];
-
-const creatorNavItems = [
-  { href: '/chat/upload', label: 'Upload Video', icon: UploadCloud }
-]
 
 export default function ChatLayout({ children }: { children: ReactNode }) {
   const pathname = usePathname();
@@ -78,27 +73,6 @@ export default function ChatLayout({ children }: { children: ReactNode }) {
                   </SidebarMenuButton>
                 </SidebarMenuItem>
               ))}
-
-              {userProfile?.isCreator && (
-                <>
-                  <SidebarSeparator className="my-2" />
-                  {creatorNavItems.map((item) => (
-                    <SidebarMenuItem key={item.href}>
-                       <SidebarMenuButton
-                          asChild
-                          isActive={pathname === item.href}
-                          tooltip={{ children: item.label }}
-                          className="justify-start"
-                        >
-                          <Link href={item.href}>
-                            <item.icon className="h-5 w-5" />
-                            <span>{item.label}</span>
-                          </Link>
-                      </SidebarMenuButton>
-                    </SidebarMenuItem>
-                  ))}
-                </>
-              )}
             </SidebarMenu>
           </ScrollArea>
         </SidebarContent>
@@ -134,7 +108,7 @@ export default function ChatLayout({ children }: { children: ReactNode }) {
           <SidebarTrigger className="md:hidden" />
           <div className="flex-1">
             <h2 className="text-lg font-semibold">
-              {navItems.find(item => pathname.startsWith(item.href))?.label || creatorNavItems.find(item => pathname.startsWith(item.href))?.label || APP_NAME}
+              {navItems.find(item => pathname.startsWith(item.href))?.label || APP_NAME}
             </h2>
           </div>
         </header>
