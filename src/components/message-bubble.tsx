@@ -42,7 +42,7 @@ export function MessageBubble({ message }: { message: Message }) {
       )}
     >
       {!isSender && (
-        <UserAvatar user={message.user} className="h-8 w-8 shrink-0 mt-1" />
+        <UserAvatar user={message.author} className="h-8 w-8 shrink-0 mt-1" />
       )}
       <div
         className={cn(
@@ -52,8 +52,8 @@ export function MessageBubble({ message }: { message: Message }) {
             : 'bg-card text-card-foreground rounded-bl-none border'
         )}
       >
-        {!isSender && message.user.name && (
-          <p className="text-xs font-semibold mb-1 text-muted-foreground">{message.user.name}</p>
+        {!isSender && message.author.name && (
+          <p className="text-xs font-semibold mb-1 text-muted-foreground">{message.author.name}</p>
         )}
 
         {message.text && <p className="whitespace-pre-wrap break-words text-sm leading-relaxed">{message.text}</p>}
@@ -89,7 +89,7 @@ export function MessageBubble({ message }: { message: Message }) {
         </div>
       </div>
       {isSender && (
-        <UserAvatar user={message.user} className="h-8 w-8 shrink-0 mt-1" />
+        <UserAvatar user={message.author} className="h-8 w-8 shrink-0 mt-1" />
       )}
     </div>
   );

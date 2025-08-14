@@ -108,13 +108,13 @@ export function ChatInterface({
           id: doc.id,
           text: data.text,
           timestamp: data.timestamp,
-          user: data.user,
+          author: data.author,
           userId: data.userId,
           isSender: data.userId === userId,
           status: 'sent',
           voiceNoteUrl: data.voiceNoteUrl,
           fileName: data.fileName,
-        });
+        } as Message);
       });
       setMessages(fetchedMessages);
     }, (error) => {
@@ -172,10 +172,10 @@ export function ChatInterface({
         }
       }
 
-      const messageData: Omit<Message, 'id' | 'isSender' | 'status'> = {
+      const messageData = {
         text: messageText,
         timestamp: serverTimestamp(),
-        user: {
+        author: {
           id: currentUser.id,
           name: currentUser.name || "Anonymous",
           avatarUrl: currentUser.avatarUrl || `https://placehold.co/100x100/78909C/FFFFFF?text=${(currentUser.name || 'A').charAt(0).toUpperCase()}`,

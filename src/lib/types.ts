@@ -36,7 +36,7 @@ export interface Message {
   id: string; // Firestore document ID
   text: string;
   timestamp: Timestamp | FieldValue;
-  user: User; // Simplified user object, consider storing only userId in Firestore and denormalizing if needed
+  author: User; // User object of the message author
   userId: string; // Store userId directly for easier querying
   isSender: boolean; // True if the current user sent this message (client-side only)
   status?: 'sending' | 'sent' | 'failed' | 'moderated'; // Optional message status
