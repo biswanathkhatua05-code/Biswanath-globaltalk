@@ -16,10 +16,8 @@ import {
   SidebarMenuItem,
   SidebarMenuButton,
   SidebarTrigger,
-  SidebarInset,
-  SidebarSeparator
 } from '@/components/ui/sidebar';
-import { Users, Shuffle, Search, LogOut, Settings, UserCircle, MessageSquareMore } from 'lucide-react';
+import { Users, Shuffle, Search, LogOut } from 'lucide-react';
 import { useAuth } from '@/context/auth-context';
 import { UserAvatar } from '@/components/user-avatar';
 import { Badge } from '@/components/ui/badge';
@@ -33,12 +31,10 @@ const navItems = [
 
 export default function ChatLayout({ children }: { children: ReactNode }) {
   const pathname = usePathname();
-  const { userId, userProfile, logout, isLoggedIn } = useAuth();
+  const { userProfile, logout, isLoggedIn } = useAuth();
   const router = useRouter();
 
   if (!isLoggedIn) {
-     // The AuthProvider already shows a loading screen and handles redirects.
-     // We can return a simple loading state here as a fallback.
      return <div className="flex min-h-screen flex-col items-center justify-center bg-background p-8">
        <p className="text-foreground">Loading session...</p>
      </div>;
