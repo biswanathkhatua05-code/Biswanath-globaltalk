@@ -16,6 +16,7 @@ import {
   SidebarMenuItem,
   SidebarMenuButton,
   SidebarTrigger,
+  SidebarInset,
 } from '@/components/ui/sidebar';
 import { Users, Shuffle, Search, LogOut } from 'lucide-react';
 import { useAuth } from '@/context/auth-context';
