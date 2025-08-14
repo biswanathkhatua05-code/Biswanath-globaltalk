@@ -1,3 +1,4 @@
+
 rules_version = '2';
 
 service cloud.firestore {
@@ -42,23 +43,16 @@ service cloud.firestore {
         }
     }
     
-    // Videos, Likes, Comments
+    // Videos, Likes, Comments - Kept for future use, doesn't harm anything.
     match /videos/{videoId} {
-      // Anyone can read video details.
       allow read;
-      
-      // Only authenticated users can like/unlike (increment is an update).
       allow update: if request.auth != null;
-      
-      // Only users who are creators can create videos.
       allow create: if request.auth != null && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.isCreator == true;
       
-      // Anyone authenticated can comment.
       match /comments/{commentId} {
         allow read, create: if request.auth != null;
       }
       
-      // Only one like per user.
       match /likes/{userId} {
         allow read, create: if request.auth != null && request.auth.uid == userId;
       }
