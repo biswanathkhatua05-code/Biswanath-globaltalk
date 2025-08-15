@@ -1,31 +1,65 @@
+
 "use client";
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter } from '@/components/ui/card';
-import { Search, UserPlus } from 'lucide-react';
+import { Search, UserPlus, Loader2 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
+import { doc, getDoc } from 'firebase/firestore';
+import { firestore } from '@/lib/firebase';
+import { useAuth } from '@/context/auth-context';
 
 export default function FindFriendsPage() {
   const [uidInput, setUidInput] = useState('');
+  const [isSearching, setIsSearching] = useState(false);
   const router = useRouter();
   const { toast } = useToast();
+  const { userId } = useAuth();
 
-  const handleSearch = (e: React.FormEvent) => {
+  const handleSearch = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!uidInput.trim()) {
+    if (!uidInput.trim() || uidInput.trim() === userId) {
       toast({
-        title: "Invalid UID",
-        description: "Please enter a User ID to search.",
+        title: "Invalid User ID",
+        description: "Please enter a valid User ID that is not your own.",
         variant: "destructive",
       });
       return;
     }
-    // In a real app, you'd search Firestore for this UID.
-    // For now, we just navigate to a private chat page with this UID.
-    // This simulates finding the user and opening a chat.
-    router.push(`/chat/private/${uidInput.trim()}`);
+
+    setIsSearching(true);
+    try {
+      const friendId = uidInput.trim();
+      const userRef = doc(firestore, 'users', friendId);
+      const userSnap = await getDoc(userRef);
+
+      if (userSnap.exists()) {
+        // User found, navigate to the private chat page
+        toast({
+            title: "User Found!",
+            description: `Starting a chat with ${userSnap.data().name || 'user'}.`,
+        });
+        router.push(`/chat/private/${friendId}`);
+      } else {
+        // User does not exist
+        toast({
+          title: "User Not Found",
+          description: "The User ID you entered does not exist. Please check and try again.",
+          variant: "destructive",
+        });
+      }
+    } catch (error) {
+        console.error("Error searching for user:", error);
+        toast({
+          title: "Search Error",
+          description: "Something went wrong while searching. Please try again.",
+          variant: "destructive",
+        });
+    } finally {
+        setIsSearching(false);
+    }
   };
 
   return (
@@ -49,6 +83,7 @@ export default function FindFriendsPage() {
                 onChange={(e) => setUidInput(e.target.value)}
                 className="pl-10 py-3 text-base"
                 aria-label="Friend's User ID"
+                disabled={isSearching}
               />
             </div>
             <p className="text-xs text-muted-foreground text-center">
@@ -56,9 +91,12 @@ export default function FindFriendsPage() {
             </p>
           </CardContent>
           <CardFooter>
-            <Button type="submit" className="w-full py-3 text-lg">
-              <Search className="mr-2 h-5 w-5" />
-              Search and Chat
+            <Button type="submit" className="w-full py-3 text-lg" disabled={isSearching}>
+              {isSearching ? (
+                <><Loader2 className="mr-2 h-5 w-5 animate-spin" /> Searching...</>
+              ) : (
+                <><Search className="mr-2 h-5 w-5" /> Search and Chat</>
+              )}
             </Button>
           </CardFooter>
         </form>
