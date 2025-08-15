@@ -1,3 +1,4 @@
+
 "use client";
 
 import { useParams, useRouter } from 'next/navigation';
@@ -6,10 +7,12 @@ import type { User } from '@/lib/types';
 import { Card, CardContent } from '@/components/ui/card';
 import { UserAvatar } from '@/components/user-avatar';
 import { Button } from '@/components/ui/button';
-import { ArrowLeft, MessageSquare, UserPlus, Link as LinkIcon } from 'lucide-react';
+import { ArrowLeft, MessageSquare, UserPlus, Link as LinkIcon, AlertCircle } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { Skeleton } from '@/components/ui/skeleton';
 import Link from 'next/link';
+import { doc, getDoc } from 'firebase/firestore';
+import { firestore } from '@/lib/firebase';
 
 export default function UserProfilePage() {
   const params = useParams();
@@ -19,21 +22,31 @@ export default function UserProfilePage() {
 
   const [user, setUser] = useState<User | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     if (userId) {
-      setIsLoading(true);
-      // In a real app, you would fetch user data from Firestore.
-      // For this demo, we'll create placeholder data based on the UID.
-      const avatarSeed = userId.replace(/[^a-zA-Z0-9]/g, '').slice(0, 10);
-      const fetchedUser: User = {
-        id: userId,
-        name: `User ${userId.substring(0, 6)}...`,
-        // Using a more artistic placeholder to match the provided image style
-        avatarUrl: `https://api.dicebear.com/8.x/lorelei/svg?seed=${avatarSeed}`,
+      const fetchUserData = async () => {
+        setIsLoading(true);
+        setError(null);
+        try {
+          const userRef = doc(firestore, 'users', userId);
+          const userSnap = await getDoc(userRef);
+
+          if (userSnap.exists()) {
+            setUser({ id: userSnap.id, ...userSnap.data() } as User);
+          } else {
+            setError("User not found.");
+          }
+        } catch (err) {
+            console.error("Error fetching user profile:", err);
+            setError("Failed to load profile.");
+        } finally {
+            setIsLoading(false);
+        }
       };
-      setUser(fetchedUser);
-      setIsLoading(false);
+      
+      fetchUserData();
     }
   }, [userId]);
 
@@ -48,7 +61,7 @@ export default function UserProfilePage() {
     });
   };
 
-  if (isLoading || !user) {
+  if (isLoading) {
     return (
         <div className="container mx-auto py-4 sm:py-8 max-w-md">
             <div className="flex items-center mb-4">
@@ -90,6 +103,20 @@ export default function UserProfilePage() {
                      </div>
                 </div>
             </Card>
+        </div>
+    );
+  }
+
+  if (error || !user) {
+    return (
+        <div className="flex flex-col items-center justify-center h-full p-4 text-center">
+            <AlertCircle className="h-16 w-16 text-destructive mb-4" />
+            <h2 className="text-2xl font-bold">Profile Not Found</h2>
+            <p className="text-muted-foreground">{error || "The user you are looking for does not exist."}</p>
+            <Button variant="outline" onClick={() => router.back()} className="mt-6">
+                <ArrowLeft className="mr-2 h-4 w-4" />
+                Go Back
+            </Button>
         </div>
     );
   }
@@ -159,3 +186,5 @@ export default function UserProfilePage() {
     </div>
   );
 }
+
+    
