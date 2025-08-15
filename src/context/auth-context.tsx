@@ -95,14 +95,9 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     }
   }, []);
 
-  if (isLoadingAuth) {
-    return (
-      <div className="flex min-h-screen flex-col items-center justify-center bg-background p-8">
-        <Loader2 className="h-10 w-10 animate-spin text-primary" />
-        <p className="mt-4 text-foreground">Initializing session...</p>
-      </div>
-    );
-  }
+  // We no longer show a full-page loader. 
+  // The individual pages will handle their own loading state based on `isLoadingAuth` or `isLoggedIn`.
+  // This provides a faster perceived load time for the user.
 
   return (
     <AuthContext.Provider 
