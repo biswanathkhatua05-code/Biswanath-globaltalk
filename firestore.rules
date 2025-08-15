@@ -3,65 +3,63 @@ rules_version = '2';
 
 service cloud.firestore {
   match /databases/{database}/documents {
-
-    // Users: Can read anyone's profile. Can only create/update their own profile.
+    
+    // Users Collection
+    // - Allow users to read their own profile.
+    // - Allow any authenticated user to create their own profile.
+    // - Allow users to update their own profile.
     match /users/{userId} {
-      allow read;
-      allow create, update: if request.auth != null && request.auth.uid == userId;
+      allow read: if request.auth != null;
+      allow create: if request.auth.uid == userId;
+      allow update: if request.auth.uid == userId;
     }
 
-    // Global Chat: Anyone authenticated can read/write.
+    // Global Messages
+    // - Allow any authenticated user to read global messages.
+    // - Allow any authenticated user to write to the global chat, but only if the message is from them.
     match /global_messages/{messageId} {
-      allow read, write: if request.auth != null;
+      allow read: if request.auth != null;
+      allow create: if request.auth.uid == request.resource.data.userId;
     }
 
-    // Private Chat Sessions:
+    // Private Chat Sessions
+    // - Allow read/write only if the requesting user is one of the participants in the chat.
     match /chat_sessions/{chatId} {
-      // Participants can read/write the session document (e.g., for metadata)
-      allow read, write: if request.auth != null && request.auth.uid in resource.data.participants;
+      allow read, write: if request.auth.uid in resource.data.participants;
 
       // Messages within a private chat
       match /messages/{messageId} {
-        // Only participants of the chat can read or write messages.
-        allow read, write: if request.auth != null && request.auth.uid in get(/databases/$(database)/documents/chat_sessions/$(chatId)).data.participants;
+        allow read, write: if request.auth.uid in get(/databases/$(database)/documents/chat_sessions/$(chatId)).data.participants;
       }
-    }
-
-    // Random Chat Sessions Pool:
-    match /random_chat_sessions_pool/{sessionId} {
-        // Allow creating a new session.
-        allow create: if request.auth != null;
-        
-        // Allow reading, updating (to join), and writing messages only by participants.
-        // Joining a session (update): Check if user is becoming user2.
-        // Reading session status: Check if user is a participant.
-        allow read, update: if request.auth != null && (request.auth.uid == resource.data.userId1 || request.auth.uid == resource.data.userId2);
-
-        // Messages within a random chat
-        match /messages/{messageId} {
-            allow read, write: if request.auth != null && (request.auth.uid == get(/databases/$(database)/documents/random_chat_sessions_pool/$(sessionId)).data.userId1 || request.auth.uid == get(/databases/$(database)/documents/random_chat_sessions_pool/$(sessionId)).data.userId2);
-        }
     }
     
-    // Videos, Likes, Comments
-    match /videos/{videoId} {
-      // Anyone can read video details.
-      allow read;
-      
-      // Only authenticated users can like/unlike (increment is an update).
-      allow update: if request.auth != null;
-      
-      // Only users who are creators can create videos.
-      allow create: if request.auth != null && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.isCreator == true;
-      
-      // Anyone authenticated can comment.
-      match /comments/{commentId} {
-        allow read, create: if request.auth != null;
+    // Random Chat Sessions Pool
+    // - Allow any authenticated user to read/write to the random chat pool.
+    //   More complex rules could be added to prevent users from joining their own sessions.
+    match /random_chat_sessions_pool/{sessionId} {
+      allow read, write: if request.auth != null;
+
+      // Messages within a random chat
+      match /messages/{messageId} {
+        allow read, write: if request.auth != null; // Basic rule, can be tightened
       }
-      
-      // Only one like per user.
+    }
+
+    // Videos, Comments, Likes (YouTube Clone Feature)
+    // - Allow any authenticated user to read video/comment/like data.
+    // - Allow create only if the data belongs to the authenticated user.
+    match /videos/{videoId} {
+      allow read: if request.auth != null;
+      allow create, update: if request.auth.uid == request.resource.data.creatorId;
+
+      match /comments/{commentId} {
+        allow read: if request.auth != null;
+        allow create: if request.auth.uid == request.resource.data.authorId;
+      }
+
       match /likes/{userId} {
-        allow read, create: if request.auth != null && request.auth.uid == userId;
+        allow read: if request.auth != null;
+        allow create: if request.auth.uid == userId;
       }
     }
   }
