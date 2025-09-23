@@ -109,7 +109,7 @@ export default function ChatLayout({ children }: { children: ReactNode }) {
             </h2>
           </div>
         </header>
-        <main className="flex-1 overflow-auto p-4 md:p-6">
+        <main className="flex-1 flex flex-col overflow-auto p-4 md:p-6">
           {children}
         </main>
       </SidebarInset>

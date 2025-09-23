@@ -16,7 +16,7 @@ export default function GlobalChatPage() {
   }
   
   return (
-    <div className="flex flex-col h-full">
+    <div className="flex flex-col h-full flex-grow">
       <Card className="mb-4 shadow-sm shrink-0">
         <CardHeader className="pb-2">
           <div className="flex items-center gap-3">
@@ -28,7 +28,7 @@ export default function GlobalChatPage() {
           </div>
         </CardHeader>
       </Card>
-      <div className="flex-grow min-h-0"> {/*This ensures ChatInterface can take remaining height*/}
+      <div className="flex-grow min-h-0">
          <ChatInterface
           chatId="global_chat_room" // This will be used by ChatInterface to determine the Firestore collection
           chatMode="global"
