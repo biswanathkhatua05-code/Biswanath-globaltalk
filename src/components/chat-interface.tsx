@@ -41,6 +41,7 @@ export function ChatInterface({
   const { checkMessage, isLoading: isModerating, error: moderationError } = useChatModeration();
   const { toast } = useToast();
   const scrollAreaRef = useRef<HTMLDivElement>(null);
+  const audioRef = useRef<HTMLAudioElement | null>(null);
 
   // States and Refs for Video Calling
   const [showVideoCall, setShowVideoCall] = useState(false);
@@ -71,8 +72,13 @@ export function ChatInterface({
   const currentUser: User | undefined = firebaseUser ? { id: firebaseUser.uid, name: firebaseUser.displayName || 'You', avatarUrl: firebaseUser.photoURL || undefined } : undefined;
 
   useEffect(() => {
-    if (typeof window !== "undefined" && 'pictureInPictureEnabled' in document) {
-        setIsPiPSupported(document.pictureInPictureEnabled);
+    if (typeof window !== "undefined") {
+        if ('pictureInPictureEnabled' in document) {
+            setIsPiPSupported(document.pictureInPictureEnabled);
+        }
+        // Preload the audio
+        audioRef.current = new Audio('/sounds/message-sent.mp3');
+        audioRef.current.preload = 'auto';
     }
   }, []);
 
@@ -185,6 +191,13 @@ export function ChatInterface({
       };
 
       await addDoc(collection(firestore, messagesCollectionPath), messageData);
+      
+      // Play sound on successful message send
+      if (audioRef.current) {
+        audioRef.current.currentTime = 0;
+        audioRef.current.play().catch(error => console.error("Audio play failed:", error));
+      }
+
     } catch (error) {
       console.error("Error sending message to Firestore:", error);
       toast({
@@ -970,3 +983,5 @@ export function ChatInterface({
     </div>
   );
 }
+
+    
