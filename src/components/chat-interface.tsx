@@ -3,10 +3,9 @@
 import type { Message, User, ChatMode } from '@/lib/types';
 import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { MessageBubble } from './message-bubble';
-import { Send, Paperclip, Mic, Video, Phone, AlertCircle, LogOut, Bot, VideoOff, XCircle, Loader2, StopCircle, MicOff, SwitchCamera, Minus, UserCircle, PhoneOff } from 'lucide-react';
+import { Video, Phone, AlertCircle, LogOut, Bot, VideoOff, XCircle, Loader2, MicOff, SwitchCamera, Minus, UserCircle, PhoneOff } from 'lucide-react';
 import { useAuth } from '@/context/auth-context';
 import { useChatModeration } from '@/hooks/use-chat-moderation';
 import { useToast } from '@/hooks/use-toast';
@@ -17,6 +16,7 @@ import { cn } from '@/lib/utils';
 import { firestore, servers } from '@/lib/firebase'; // Import firestore and servers
 import { collection, addDoc, serverTimestamp, query, orderBy, onSnapshot, Timestamp, where, limit, doc, setDoc, getDoc, updateDoc, arrayUnion, deleteDoc, getDocs } from 'firebase/firestore'; // Firestore imports
 import Link from 'next/link';
+import { ChatInputBar } from './chat-input-bar'; // Import the new component
 
 interface ChatInterfaceProps {
   chatId: string; 
@@ -37,7 +37,6 @@ export function ChatInterface({
 }: ChatInterfaceProps) {
   const { userId, isLoggedIn, firebaseUser } = useAuth();
   const [messages, setMessages] = useState<Message[]>([]);
-  const [inputValue, setInputValue] = useState('');
   const { checkMessage, isLoading: isModerating, error: moderationError } = useChatModeration();
   const { toast } = useToast();
   const scrollAreaRef = useRef<HTMLDivElement>(null);
@@ -63,11 +62,6 @@ export function ChatInterface({
   const remoteAudioRef = useRef<HTMLAudioElement>(null);
   const voiceCallStreamRef = useRef<MediaStream | null>(null);
   const voiceCallPeerConnectionRef = useRef<RTCPeerConnection | null>(null);
-
-  const [isRecording, setIsRecording] = useState(false);
-  const [micPermissionStatus, setMicPermissionStatus] = useState<'idle' | 'pending' | 'granted' | 'denied'>('idle');
-  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
-  const audioChunksRef = useRef<Blob[]>([]);
 
   const currentUser: User | undefined = firebaseUser ? { id: firebaseUser.uid, name: firebaseUser.displayName || 'You', avatarUrl: firebaseUser.photoURL || undefined } : undefined;
 
@@ -111,21 +105,56 @@ export function ChatInterface({
 
     const unsubscribe = onSnapshot(q, (querySnapshot) => {
       const fetchedMessages: Message[] = [];
-      querySnapshot.forEach((doc) => {
-        const data = doc.data();
-        fetchedMessages.push({
-          id: doc.id,
-          text: data.text,
-          timestamp: data.timestamp,
-          author: data.author,
-          userId: data.userId,
-          isSender: data.userId === userId,
-          status: 'sent',
-          voiceNoteUrl: data.voiceNoteUrl,
-          fileName: data.fileName,
-        } as Message);
+      let soundPlayed = false; // Flag to play sound only once per snapshot
+      querySnapshot.docChanges().forEach((change) => {
+        if (change.type === "added") {
+          const data = change.doc.data();
+          const message = {
+            id: change.doc.id,
+            text: data.text,
+            timestamp: data.timestamp,
+            author: data.author,
+            userId: data.userId,
+            isSender: data.userId === userId,
+            status: 'sent',
+            voiceNoteUrl: data.voiceNoteUrl,
+            fileName: data.fileName,
+          } as Message;
+          fetchedMessages.push(message);
+
+          // Play sound for new incoming messages
+          if (!message.isSender && !soundPlayed) {
+              if (audioRef.current) {
+                audioRef.current.currentTime = 0;
+                audioRef.current.play().catch(error => console.error("Audio play failed:", error));
+              }
+              soundPlayed = true;
+          }
+        }
       });
-      setMessages(fetchedMessages);
+
+      // It's better to update the state with all messages, not just new ones,
+      // to handle the initial load correctly.
+      setMessages(currentMessages => {
+          const allMessages: Message[] = [];
+          querySnapshot.forEach(doc => {
+              const data = doc.data();
+              allMessages.push({
+                id: doc.id,
+                text: data.text,
+                timestamp: data.timestamp,
+                author: data.author,
+                userId: data.userId,
+                isSender: data.userId === userId,
+                status: 'sent',
+                voiceNoteUrl: data.voiceNoteUrl,
+                fileName: data.fileName,
+              } as Message);
+          });
+          return allMessages;
+      });
+
+
     }, (error) => {
       console.error("Error fetching messages from Firestore:", error);
       toast({
@@ -195,12 +224,6 @@ export function ChatInterface({
 
       await addDoc(collection(firestore, messagesCollectionPath), messageData);
       
-      // Play sound on successful message send
-      if (audioRef.current) {
-        audioRef.current.currentTime = 0;
-        audioRef.current.play().catch(error => console.error("Audio play failed:", error));
-      }
-
     } catch (error) {
       console.error("Error sending message to Firestore:", error);
       toast({
@@ -279,7 +302,6 @@ export function ChatInterface({
       });
     }
   };
-
 
   // Effect for the entire Video Call lifecycle
   useEffect(() => {
@@ -636,77 +658,6 @@ export function ChatInterface({
     });
   };
 
-  const startRecording = async () => {
-    if (!currentUser || !isLoggedIn) return;
-    setMicPermissionStatus('pending');
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      setMicPermissionStatus('granted');
-      
-      // Use native MediaRecorder
-      const options = { mimeType: 'audio/webm' };
-      const mediaRecorder = new MediaRecorder(stream, options);
-      mediaRecorderRef.current = mediaRecorder;
-      audioChunksRef.current = [];
-
-      mediaRecorder.ondataavailable = (event) => {
-        if (event.data.size > 0) {
-          audioChunksRef.current.push(event.data);
-        }
-      };
-
-      mediaRecorder.onstop = async () => {
-        const audioBlob = new Blob(audioChunksRef.current, { type: 'audio/webm' });
-        const audioUrl = URL.createObjectURL(audioBlob);
-        await handleSendMessage("", { voiceNoteUrl: audioUrl, fileName: `Voice Note ${new Date().toLocaleTimeString()}.webm` });
-        
-        // Clean up stream tracks
-        stream.getTracks().forEach(track => track.stop());
-        mediaRecorderRef.current = null;
-      };
-
-      mediaRecorder.start();
-      setIsRecording(true);
-      toast({ title: 'Recording Started', description: 'Recording will stop when you click the button again.', variant: 'default' });
-  
-    } catch (err) {
-      console.error('Error accessing microphone:', err);
-      setMicPermissionStatus('denied');
-      toast({
-        title: 'Microphone Access Denied',
-        description: 'Please enable microphone permissions in your browser settings.',
-        variant: 'destructive',
-      });
-      setIsRecording(false); 
-    }
-  };
-  
-  const stopRecording = () => {
-    if (mediaRecorderRef.current && isRecording) {
-      mediaRecorderRef.current.stop();
-      setIsRecording(false);
-      toast({ title: 'Recording Stopped', description: 'Processing voice note...', variant: 'default' });
-    }
-  };
-
-
-  const handleMicButtonClick = () => {
-    if (isRecording) {
-      stopRecording();
-    } else {
-      if (micPermissionStatus === 'denied') {
-        toast({
-          title: 'Microphone Access Required',
-          description: 'Please enable microphone permissions in your browser settings and try again.',
-          variant: 'destructive',
-        });
-        return;
-      }
-      startRecording();
-    }
-  };
-
-
   return (
     <div className="flex h-full flex-col bg-card border rounded-lg shadow-xl overflow-hidden">
       <header className="flex items-center justify-between p-4 border-b shrink-0">
@@ -730,7 +681,7 @@ export function ChatInterface({
                     size="icon"
                     onClick={handleHeaderVideoClick}
                     className={cn("text-muted-foreground hover:text-primary", isCallActive && "text-primary")}
-                    disabled={isRecording || micPermissionStatus === 'pending' || isVoiceCallActive}
+                    disabled={isVoiceCallActive}
                   >
                     {showVideoCall ? <VideoOff className="h-5 w-5" /> : <Video className="h-5 w-5" />}
                   </Button>
@@ -760,7 +711,7 @@ export function ChatInterface({
                     className={cn("text-muted-foreground hover:text-primary", isVoiceCallActive && "text-primary")}
                     disabled={isCallActive}
                   >
-                    {isVoiceCallActive ? (isVoiceCallMuted ? <MicOff className="h-5 w-5"/> : <Mic className="h-5 w-5"/>) : <Phone className="h-5 w-5" />}
+                    {isVoiceCallActive ? (isVoiceCallMuted ? <MicOff className="h-5 w-5"/> : <Phone className="h-5 w-5"/>) : <Phone className="h-5 w-5" />}
                   </Button>
                 </TooltipTrigger>
                 <TooltipContent>
@@ -854,7 +805,7 @@ export function ChatInterface({
               <Tooltip>
                 <TooltipTrigger asChild>
                   <Button onClick={toggleMic} size="icon" className="bg-neutral-700/50 hover:bg-neutral-600/70 text-white rounded-full p-3" disabled={!hasCameraPermission}>
-                    {isMicMuted ? <MicOff className="h-5 w-5" /> : <Mic className="h-5 w-5" />}
+                    {isMicMuted ? <MicOff className="h-5 w-5" /> : <Phone className="h-5 w-5" />}
                   </Button>
                 </TooltipTrigger>
                 <TooltipContent><p>{isMicMuted ? "Unmute Microphone" : "Mute Microphone"}</p></TooltipContent>
@@ -918,73 +869,12 @@ export function ChatInterface({
       {/* Hidden audio element for voice calls */}
       <audio ref={remoteAudioRef} autoPlay playsInline />
 
-      <footer className="p-4 border-t bg-background/80 backdrop-blur-sm shrink-0">
-        <form
-          onSubmit={(e) => {
-            e.preventDefault();
-            if (inputValue.trim()) {
-                handleSendMessage(inputValue);
-                setInputValue('');
-            }
-          }}
-          className="flex items-center gap-2"
-        >
-          <TooltipProvider>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Button 
-                  variant="ghost" 
-                  size="icon" 
-                  type="button" 
-                  onClick={handleMicButtonClick}
-                  disabled={!isLoggedIn || isModerating || showVideoCall || (micPermissionStatus === 'denied' && !isRecording) || isVoiceCallActive}
-                >
-                  {isRecording ? <StopCircle className="h-5 w-5 text-destructive" /> : <Mic className="h-5 w-5" />}
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent><p>{isRecording ? "Stop Recording" : (micPermissionStatus === 'denied' ? "Mic Permission Denied" : "Record Voice Note")}</p></TooltipContent>
-            </Tooltip>
-            <Tooltip>
-              <TooltipTrigger asChild><Button variant="ghost" size="icon" type="button" disabled><Paperclip className="h-5 w-5" /></Button></TooltipTrigger>
-              <TooltipContent><p>Attach File (Coming Soon)</p></TooltipContent>
-            </Tooltip>
-          </TooltipProvider>
-          <Input
-            type="text"
-            placeholder={isLoggedIn ? "Type a message..." : "Please log in to chat."}
-            value={inputValue}
-            onChange={(e) => setInputValue(e.target.value)}
-            disabled={!isLoggedIn || isModerating || showVideoCall || isRecording || isVoiceCallActive}
-            className="flex-1 text-sm"
-            aria-label="Chat message input"
-          />
-          <Button type="submit" size="icon" disabled={!inputValue.trim() || !isLoggedIn || isModerating || showVideoCall || isRecording || isVoiceCallActive} aria-label="Send message">
-            <Send className="h-5 w-5" />
-          </Button>
-        </form>
-        {!isLoggedIn && (
-          <p className="mt-2 text-xs text-destructive flex items-center">
-            <AlertCircle className="h-4 w-4 mr-1" /> You must be connected to send messages.
-          </p>
-        )}
-         {(showVideoCall || isVoiceCallActive) && (
-           <p className="mt-2 text-xs text-muted-foreground text-center">
-            Message input disabled during a call.
-           </p>
-         )}
-         {isRecording && (
-            <p className="mt-2 text-xs text-destructive text-center flex items-center justify-center">
-                <Mic className="h-4 w-4 mr-1 animate-pulse" /> Recording voice note... Message input disabled.
-            </p>
-         )}
-         {micPermissionStatus === 'denied' && !isRecording && (
-            <p className="mt-2 text-xs text-destructive text-center">
-                Microphone permission denied. Please enable it in your browser settings.
-            </p>
-         )}
-      </footer>
+      <ChatInputBar 
+        onSendMessage={handleSendMessage}
+        isLoggedIn={isLoggedIn}
+        isModerating={isModerating}
+        isCallActive={showVideoCall || isVoiceCallActive}
+      />
     </div>
   );
 }
-
-    
