@@ -76,11 +76,17 @@ export function ChatInterface({
         if ('pictureInPictureEnabled' in document) {
             setIsPiPSupported(document.pictureInPictureEnabled);
         }
-        // Preload the audio
-        // AGAR AAP APNI SOUND FILE ISTEMAL KAR RAHE HAIN, TOH USKA NAAM YAHAN LIKHEIN.
-        // For example: new Audio('/sounds/my-custom-sound.mp3');
-        audioRef.current = new Audio('/sounds/message-sent.mp3');
-        audioRef.current.preload = 'auto';
+        // IMPORTANT: Replace this URL with the direct link to your sound file.
+        const soundUrl = "YOUR_SOUND_URL_HERE"; 
+        // Example: const soundUrl = "https://files.catbox.moe/xyz123.mp3";
+        
+        // If you don't have a URL yet, you can use a default sound I have provided.
+        // const soundUrl = '/sounds/message-sent.mp3';
+
+        if (soundUrl && soundUrl !== "YOUR_SOUND_URL_HERE") {
+          audioRef.current = new Audio(soundUrl);
+          audioRef.current.preload = 'auto';
+        }
     }
   }, []);
 
@@ -589,7 +595,7 @@ export function ChatInterface({
            if (callDocSnap.exists()) {
             const offerCandidatesRef = collection(callDocRef, 'offerCandidates');
             const answerCandidatesRef = collection(callDocRef, 'answerCandidates');
-            const [offerCandidatesSnap, answerCandidatesSnap] = await Promise.all([getDocs(offerCandidatesRef), getDocs(answerCandidatesSnap)]);
+            const [offerCandidatesSnap, answerCandidatesSnap] = await Promise.all([getDocs(offerCandidatesRef), getDocs(answerCandidatesRef)]);
             const deletePromises: Promise<void>[] = [];
             offerCandidatesSnap.forEach(doc => deletePromises.push(deleteDoc(doc.ref)));
             answerCandidatesSnap.forEach(doc => deletePromises.push(deleteDoc(doc.ref)));
