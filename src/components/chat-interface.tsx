@@ -709,7 +709,7 @@ export function ChatInterface({
 
   return (
     <div className="flex h-full flex-col bg-card border rounded-lg shadow-xl overflow-hidden">
-      <header className="flex items-center justify-between p-4 border-b">
+      <header className="flex items-center justify-between p-4 border-b shrink-0">
         <div className="flex items-center gap-2 min-w-0">
           {partner ? (
             <Link href={`/chat/profile/${partner.id}`} className="flex items-center gap-2 min-w-0 hover:bg-accent/50 p-2 -m-2 rounded-lg transition-colors duration-200">
@@ -799,7 +799,7 @@ export function ChatInterface({
       </header>
 
       {showVideoCall ? (
-        <div className="flex-1 p-0 flex flex-col bg-black relative overflow-hidden">
+        <div className="flex-1 p-0 flex flex-col bg-black relative overflow-hidden min-h-0">
           {/* Remote User's Video */}
           <video 
             ref={remoteVideoRef}
@@ -901,7 +901,7 @@ export function ChatInterface({
           </div>
         </div>
       ) : (
-        <ScrollArea className="flex-1 p-4" ref={scrollAreaRef}>
+        <ScrollArea className="flex-1 p-4 min-h-0" ref={scrollAreaRef}>
           <div className="space-y-2">
             {messages.map((msg) => (
               <MessageBubble key={msg.id} message={msg} />
@@ -918,7 +918,7 @@ export function ChatInterface({
       {/* Hidden audio element for voice calls */}
       <audio ref={remoteAudioRef} autoPlay playsInline />
 
-      <footer className="p-4 border-t bg-background/80 backdrop-blur-sm">
+      <footer className="p-4 border-t bg-background/80 backdrop-blur-sm shrink-0">
         <form
           onSubmit={(e) => {
             e.preventDefault();
