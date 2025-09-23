@@ -76,14 +76,9 @@ export function ChatInterface({
         if ('pictureInPictureEnabled' in document) {
             setIsPiPSupported(document.pictureInPictureEnabled);
         }
-        // IMPORTANT: Replace this URL with the direct link to your sound file.
-        const soundUrl = "YOUR_SOUND_URL_HERE"; 
-        // Example: const soundUrl = "https://files.catbox.moe/xyz123.mp3";
-        
-        // If you don't have a URL yet, you can use a default sound I have provided.
-        // const soundUrl = '/sounds/message-sent.mp3';
+        const soundUrl = "https://files.catbox.moe/0rd2ya.mp3"; 
 
-        if (soundUrl && soundUrl !== "YOUR_SOUND_URL_HERE") {
+        if (soundUrl) {
           audioRef.current = new Audio(soundUrl);
           audioRef.current.preload = 'auto';
         }
