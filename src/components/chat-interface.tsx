@@ -77,6 +77,8 @@ export function ChatInterface({
             setIsPiPSupported(document.pictureInPictureEnabled);
         }
         // Preload the audio
+        // AGAR AAP APNI SOUND FILE ISTEMAL KAR RAHE HAIN, TOH USKA NAAM YAHAN LIKHEIN.
+        // For example: new Audio('/sounds/my-custom-sound.mp3');
         audioRef.current = new Audio('/sounds/message-sent.mp3');
         audioRef.current.preload = 'auto';
     }
@@ -587,7 +589,7 @@ export function ChatInterface({
            if (callDocSnap.exists()) {
             const offerCandidatesRef = collection(callDocRef, 'offerCandidates');
             const answerCandidatesRef = collection(callDocRef, 'answerCandidates');
-            const [offerCandidatesSnap, answerCandidatesSnap] = await Promise.all([getDocs(offerCandidatesRef), getDocs(answerCandidatesRef)]);
+            const [offerCandidatesSnap, answerCandidatesSnap] = await Promise.all([getDocs(offerCandidatesRef), getDocs(answerCandidatesSnap)]);
             const deletePromises: Promise<void>[] = [];
             offerCandidatesSnap.forEach(doc => deletePromises.push(deleteDoc(doc.ref)));
             answerCandidatesSnap.forEach(doc => deletePromises.push(deleteDoc(doc.ref)));
