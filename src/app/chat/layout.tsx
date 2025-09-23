@@ -36,9 +36,9 @@ export default function ChatLayout({ children }: { children: ReactNode }) {
   const router = useRouter();
 
   if (!isLoggedIn) {
-     return <div className="flex min-h-screen flex-col items-center justify-center bg-background p-8">
-       <p className="text-foreground">Loading session...</p>
-     </div>;
+     // While the session is loading, we can show a minimal loading state 
+     // or nothing to avoid layout shifts and messages. Returning null is clean.
+     return null;
   }
 
   return (
