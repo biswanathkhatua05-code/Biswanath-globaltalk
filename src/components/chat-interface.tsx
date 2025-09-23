@@ -660,6 +660,7 @@ export function ChatInterface({
 
   return (
     <div className="flex h-full flex-col bg-card border rounded-lg shadow-xl overflow-hidden">
+      {chatMode !== 'global' && (
       <header className="flex items-center justify-between p-4 border-b shrink-0">
         <div className="flex items-center gap-2 min-w-0">
           {partner ? (
@@ -748,6 +749,7 @@ export function ChatInterface({
           )}
         </div>
       </header>
+      )}
 
       {showVideoCall ? (
         <div className="flex-1 p-0 flex flex-col bg-black relative overflow-hidden min-h-0">
@@ -879,4 +881,3 @@ export function ChatInterface({
   );
 }
 
-    

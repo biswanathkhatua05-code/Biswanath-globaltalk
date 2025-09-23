@@ -17,7 +17,7 @@ export default function GlobalChatPage() {
   
   return (
     <div className="flex flex-col h-full">
-      <Card className="mb-4 shadow-sm">
+      <Card className="mb-4 shadow-sm shrink-0">
         <CardHeader className="pb-2">
           <div className="flex items-center gap-3">
             <Users className="h-8 w-8 text-primary" />
